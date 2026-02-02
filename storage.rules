@@ -1,0 +1,16 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Food item images - anyone can read, only authenticated writes (for now allow all writes for development)
+    match /food-items/{imageId} {
+      allow read: if true;
+      allow write: if true; // For development - restrict in production
+    }
+
+    // Default deny for other paths
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}

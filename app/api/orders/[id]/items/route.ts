@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { updateOrderItems } from "@/lib/firebase-db";
 
 export async function DELETE(
   req: Request,
@@ -9,16 +7,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await context.params;
-    const orderId = parseInt(id, 10);
 
-    if (isNaN(orderId)) {
-      return NextResponse.json({ error: "Invalid order ID" }, { status: 400 });
-    }
-
-    // Delete all order items for this order
-    await prisma.orderItem.deleteMany({
-      where: { orderId: orderId },
-    });
+    // Delete all order items for this order by passing empty array
+    await updateOrderItems(id, []);
 
     return NextResponse.json({ message: "Order items deleted" });
   } catch (error) {

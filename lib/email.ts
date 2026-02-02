@@ -1,10 +1,32 @@
 import nodemailer from "nodemailer";
+import * as fs from "fs";
+import * as path from "path";
+
+// Get logo as base64 for embedding in emails
+function getLogoBase64(): string {
+  try {
+    const logoPath = path.join(process.cwd(), "public", "img", "NEMSU.png");
+    const logoBuffer = fs.readFileSync(logoPath);
+    return logoBuffer.toString("base64");
+  } catch (error) {
+    console.error("Failed to read logo file:", error);
+    return "";
+  }
+}
+
+// Logo CID for email embedding
+const LOGO_CID = "nemsu-logo";
+
+// Format order ID to look nicer (e.g., "ORD-000001")
+function formatOrderId(orderId: number): string {
+  return `ORD-${String(orderId).padStart(6, "0")}`;
+}
 
 // Validate email configuration
 function validateEmailConfig() {
   const emailUser = process.env.EMAIL_USER;
   const emailPassword = process.env.EMAIL_PASSWORD;
-  
+
   if (!emailUser || !emailPassword) {
     console.warn("⚠️ EMAIL CONFIGURATION MISSING:");
     if (!emailUser) console.warn("  - EMAIL_USER is not set in environment variables");
@@ -12,7 +34,7 @@ function validateEmailConfig() {
     console.warn("  - Please check EMAIL_SETUP.md for configuration instructions");
     return false;
   }
-  
+
   return true;
 }
 
@@ -28,7 +50,7 @@ try {
         pass: process.env.EMAIL_PASSWORD,
       },
     });
-    
+
     // Verify connection on startup
     transporter.verify((error, success) => {
       if (error) {
@@ -68,6 +90,8 @@ interface OrderEmailData {
 }
 
 export async function sendOrderConfirmationEmail(data: OrderEmailData) {
+  const logoBase64 = getLogoBase64();
+
   const itemsHtml = data.items
     .map(
       (item) => `
@@ -82,10 +106,16 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
     )
     .join("");
 
-  const mailOptions = {
+  const mailOptions: nodemailer.SendMailOptions = {
     from: `"Hotel Management System" <${process.env.EMAIL_USER}>`,
     to: data.email,
-    subject: `Order Confirmation #${data.orderId} - Thank You!`,
+    subject: `Order Confirmation ${formatOrderId(data.orderId)} - Thank You! 🎉`,
+    attachments: logoBase64 ? [{
+      filename: "logo.png",
+      content: logoBase64,
+      encoding: "base64",
+      cid: LOGO_CID,
+    }] : [],
     html: `
       <!DOCTYPE html>
       <html>
@@ -97,8 +127,9 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
           <!-- Header -->
           <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center;">
-            <h1 style="color: white; margin: 0; font-size: 28px;">🍽️ Order Confirmed!</h1>
-            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">Thank you for your order</p>
+            <img src="cid:${LOGO_CID}" alt="NEMSU Logo" style="width: 80px; height: 80px; margin-bottom: 15px; border-radius: 50%;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">Order Confirmed!</h1>
+            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">Thank you for your order at NEMSU Hostel</p>
           </div>
 
           <!-- Content -->
@@ -109,7 +140,7 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
               <table style="width: 100%; font-size: 14px;">
                 <tr>
                   <td style="padding: 5px 0; color: #6b7280; font-weight: 600;">Order ID:</td>
-                  <td style="padding: 5px 0; color: #1f2937; text-align: right;">#${data.orderId}</td>
+                  <td style="padding: 5px 0; text-align: right;"><span style="background: linear-gradient(135deg, #fb923c 0%, #f97316 100%); color: white; padding: 4px 12px; border-radius: 6px; font-weight: 700; font-size: 13px;">${formatOrderId(data.orderId)}</span></td>
                 </tr>
                 <tr>
                   <td style="padding: 5px 0; color: #6b7280; font-weight: 600;">Customer Name:</td>
@@ -174,8 +205,9 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
 
             <!-- Footer -->
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center;">
-              <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 14px;">Thank you for choosing our service!</p>
-              <p style="margin: 0; color: #9ca3af; font-size: 12px;">If you have any questions, please don't hesitate to contact us.</p>
+              <img src="cid:${LOGO_CID}" alt="NEMSU Logo" style="width: 40px; height: 40px; margin-bottom: 10px; border-radius: 50%;">
+              <p style="margin: 0 0 5px 0; color: #6b7280; font-size: 14px;">NEMSU Hostel - North Eastern Mindanao State University</p>
+              <p style="margin: 0; color: #9ca3af; font-size: 12px;">Thank you for choosing our service. Contact: 09222222222</p>
             </div>
           </div>
         </div>
@@ -190,9 +222,9 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
       console.error("   Please set EMAIL_USER and EMAIL_PASSWORD in .env file");
       return { success: false, error: "Email transporter not configured" };
     }
-    
+
     const result = await transporter.sendMail(mailOptions);
-    console.log(`✅ Order confirmation email sent to ${data.email} for order #${data.orderId}`);
+    console.log(`✅ Order confirmation email sent to ${data.email} for order ${formatOrderId(data.orderId)}`);
     return { success: true, messageId: result.messageId };
   } catch (error: any) {
     console.error("❌ Email sending failed:", error.message || error);
@@ -207,6 +239,8 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
 }
 
 export async function sendOrderPickupConfirmationEmail(data: OrderEmailData) {
+  const logoBase64 = getLogoBase64();
+
   const itemsHtml = data.items
     .map(
       (item) => `
@@ -221,10 +255,16 @@ export async function sendOrderPickupConfirmationEmail(data: OrderEmailData) {
     )
     .join("");
 
-  const mailOptions = {
+  const mailOptions: nodemailer.SendMailOptions = {
     from: `"Hotel Management System" <${process.env.EMAIL_USER}>`,
     to: data.email,
-    subject: `Pickup Confirmation #${data.orderId} - See You Soon! 👜`,
+    subject: `Pickup Confirmation ${formatOrderId(data.orderId)} - See You Soon! 👜`,
+    attachments: logoBase64 ? [{
+      filename: "logo.png",
+      content: logoBase64,
+      encoding: "base64",
+      cid: LOGO_CID,
+    }] : [],
     html: `
       <!DOCTYPE html>
       <html>
@@ -236,9 +276,9 @@ export async function sendOrderPickupConfirmationEmail(data: OrderEmailData) {
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
           <!-- Header -->
           <div style="background: linear-gradient(135deg, #fb923c 0%, #f97316 100%); padding: 30px; text-align: center;">
-            <div style="font-size: 48px; margin-bottom: 10px;">👜</div>
+            <img src="cid:${LOGO_CID}" alt="NEMSU Logo" style="width: 80px; height: 80px; margin-bottom: 15px; border-radius: 50%;">
             <h1 style="color: white; margin: 0; font-size: 28px;">Pickup Confirmed!</h1>
-            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">Your order will be ready for pickup</p>
+            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">Your order will be ready for pickup at NEMSU Hostel</p>
           </div>
 
           <!-- Content -->
@@ -260,7 +300,7 @@ export async function sendOrderPickupConfirmationEmail(data: OrderEmailData) {
               <table style="width: 100%; font-size: 14px;">
                 <tr>
                   <td style="padding: 5px 0; color: #6b7280; font-weight: 600;">Order ID:</td>
-                  <td style="padding: 5px 0; color: #1f2937; text-align: right;">#${data.orderId}</td>
+                  <td style="padding: 5px 0; color: #1f2937; text-align: right;"><span style="background: linear-gradient(135deg, #fb923c 0%, #f97316 100%); color: white; padding: 4px 12px; border-radius: 6px; font-weight: 700; font-size: 13px;">${formatOrderId(data.orderId)}</span></td>
                 </tr>
                 <tr>
                   <td style="padding: 5px 0; color: #6b7280; font-weight: 600;">Customer Name:</td>
@@ -314,7 +354,7 @@ export async function sendOrderPickupConfirmationEmail(data: OrderEmailData) {
             <div style="margin-top: 20px; padding: 20px; background-color: #eff6ff; border-left: 4px solid #3b82f6; border-radius: 4px;">
               <h3 style="margin: 0 0 10px 0; color: #1e40af; font-size: 16px;">ℹ️ When You Come to Pick Up</h3>
               <ul style="margin: 0; padding-left: 20px; color: #1f2937; font-size: 14px; line-height: 1.6;">
-                <li>Bring a valid ID and mention your Order ID #${data.orderId}</li>
+                <li>Bring a valid ID and mention your Order ID <strong>${formatOrderId(data.orderId)}</strong></li>
                 <li>Go to the cashier counter for pickup</li>
                 <li>If someone else will pick up, please inform us via call</li>
               </ul>
@@ -322,8 +362,9 @@ export async function sendOrderPickupConfirmationEmail(data: OrderEmailData) {
 
             <!-- Footer -->
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center;">
-              <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 14px;">Thank you! See you soon at our restaurant.</p>
-              <p style="margin: 0; color: #9ca3af; font-size: 12px;">For questions, call us at 09222222222.</p>
+              <img src="cid:${LOGO_CID}" alt="NEMSU Logo" style="width: 40px; height: 40px; margin-bottom: 10px; border-radius: 50%;">
+              <p style="margin: 0 0 5px 0; color: #6b7280; font-size: 14px;">NEMSU Hostel - North Eastern Mindanao State University</p>
+              <p style="margin: 0; color: #9ca3af; font-size: 12px;">See you soon! Contact: 09222222222</p>
             </div>
           </div>
         </div>
@@ -337,9 +378,9 @@ export async function sendOrderPickupConfirmationEmail(data: OrderEmailData) {
       console.error("❌ Cannot send email: Email transporter not configured");
       return { success: false, error: "Email transporter not configured" };
     }
-    
+
     const result = await transporter.sendMail(mailOptions);
-    console.log(`✅ Pickup confirmation email sent to ${data.email} for order #${data.orderId}`);
+    console.log(`✅ Pickup confirmation email sent to ${data.email} for order ${formatOrderId(data.orderId)}`);
     return { success: true, messageId: result.messageId };
   } catch (error: any) {
     console.error("❌ Pickup confirmation email failed:", error.message || error);
@@ -348,6 +389,8 @@ export async function sendOrderPickupConfirmationEmail(data: OrderEmailData) {
 }
 
 export async function sendOrderAcceptedEmail(data: OrderEmailData) {
+  const logoBase64 = getLogoBase64();
+
   const itemsHtml = data.items
     .map(
       (item) => `
@@ -362,10 +405,16 @@ export async function sendOrderAcceptedEmail(data: OrderEmailData) {
     )
     .join("");
 
-  const mailOptions = {
+  const mailOptions: nodemailer.SendMailOptions = {
     from: `"Hotel Management System" <${process.env.EMAIL_USER}>`,
     to: data.email,
-    subject: `Order #${data.orderId} Accepted - Preparing Your Order! ✅`,
+    subject: `Order ${formatOrderId(data.orderId)} Accepted - Preparing Your Order! ✅`,
+    attachments: logoBase64 ? [{
+      filename: "logo.png",
+      content: logoBase64,
+      encoding: "base64",
+      cid: LOGO_CID,
+    }] : [],
     html: `
       <!DOCTYPE html>
       <html>
@@ -377,9 +426,9 @@ export async function sendOrderAcceptedEmail(data: OrderEmailData) {
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
           <!-- Header -->
           <div style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); padding: 30px; text-align: center;">
-            <div style="font-size: 48px; margin-bottom: 10px;">✅</div>
+            <img src="cid:${LOGO_CID}" alt="NEMSU Logo" style="width: 80px; height: 80px; margin-bottom: 15px; border-radius: 50%;">
             <h1 style="color: white; margin: 0; font-size: 28px;">Order Accepted!</h1>
-            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">We're preparing your order now</p>
+            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">We're preparing your order now at NEMSU Hostel</p>
           </div>
 
           <!-- Content -->
@@ -399,7 +448,7 @@ export async function sendOrderAcceptedEmail(data: OrderEmailData) {
               <table style="width: 100%; font-size: 14px;">
                 <tr>
                   <td style="padding: 5px 0; color: #6b7280; font-weight: 600;">Order ID:</td>
-                  <td style="padding: 5px 0; color: #1f2937; text-align: right;">#${data.orderId}</td>
+                  <td style="padding: 5px 0; text-align: right;"><span style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; padding: 4px 12px; border-radius: 6px; font-weight: 700; font-size: 13px;">${formatOrderId(data.orderId)}</span></td>
                 </tr>
                 <tr>
                   <td style="padding: 5px 0; color: #6b7280; font-weight: 600;">Status:</td>
@@ -479,8 +528,9 @@ export async function sendOrderAcceptedEmail(data: OrderEmailData) {
 
             <!-- Footer -->
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center;">
-              <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 14px;">Thank you for your order!</p>
-              <p style="margin: 0; color: #9ca3af; font-size: 12px;">We appreciate your business and look forward to serving you.</p>
+              <img src="cid:${LOGO_CID}" alt="NEMSU Logo" style="width: 40px; height: 40px; margin-bottom: 10px; border-radius: 50%;">
+              <p style="margin: 0 0 5px 0; color: #6b7280; font-size: 14px;">NEMSU Hostel - North Eastern Mindanao State University</p>
+              <p style="margin: 0; color: #9ca3af; font-size: 12px;">We appreciate your business. Contact: 09222222222</p>
             </div>
           </div>
         </div>
@@ -494,9 +544,9 @@ export async function sendOrderAcceptedEmail(data: OrderEmailData) {
       console.error("❌ Cannot send email: Email transporter not configured");
       return { success: false, error: "Email transporter not configured" };
     }
-    
+
     const result = await transporter.sendMail(mailOptions);
-    console.log(`✅ Order accepted email sent to ${data.email} for order #${data.orderId}`);
+    console.log(`✅ Order accepted email sent to ${data.email} for order ${formatOrderId(data.orderId)}`);
     return { success: true, messageId: result.messageId };
   } catch (error: any) {
     console.error("❌ Order accepted email sending failed:", error.message || error);
@@ -505,6 +555,8 @@ export async function sendOrderAcceptedEmail(data: OrderEmailData) {
 }
 
 export async function sendOrderCompletedEmail(data: OrderEmailData) {
+  const logoBase64 = getLogoBase64();
+
   const itemsHtml = data.items
     .map(
       (item) => `
@@ -519,10 +571,16 @@ export async function sendOrderCompletedEmail(data: OrderEmailData) {
     )
     .join("");
 
-  const mailOptions = {
+  const mailOptions: nodemailer.SendMailOptions = {
     from: `"Hotel Management System" <${process.env.EMAIL_USER}>`,
     to: data.email,
-    subject: `Order #${data.orderId} Completed - Thank You! 🎉`,
+    subject: `Order ${formatOrderId(data.orderId)} Completed - Thank You! 🎉`,
+    attachments: logoBase64 ? [{
+      filename: "logo.png",
+      content: logoBase64,
+      encoding: "base64",
+      cid: LOGO_CID,
+    }] : [],
     html: `
       <!DOCTYPE html>
       <html>
@@ -534,9 +592,9 @@ export async function sendOrderCompletedEmail(data: OrderEmailData) {
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
           <!-- Header -->
           <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 30px; text-align: center;">
-            <div style="font-size: 48px; margin-bottom: 10px;">🎉</div>
+            <img src="cid:${LOGO_CID}" alt="NEMSU Logo" style="width: 80px; height: 80px; margin-bottom: 15px; border-radius: 50%;">
             <h1 style="color: white; margin: 0; font-size: 28px;">Order Completed!</h1>
-            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">Your order has been successfully delivered</p>
+            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">Your order has been successfully delivered from NEMSU Hostel</p>
           </div>
 
           <!-- Content -->
@@ -556,7 +614,7 @@ export async function sendOrderCompletedEmail(data: OrderEmailData) {
               <table style="width: 100%; font-size: 14px;">
                 <tr>
                   <td style="padding: 5px 0; color: #6b7280; font-weight: 600;">Order ID:</td>
-                  <td style="padding: 5px 0; color: #1f2937; text-align: right;">#${data.orderId}</td>
+                  <td style="padding: 5px 0; text-align: right;"><span style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 4px 12px; border-radius: 6px; font-weight: 700; font-size: 13px;">${formatOrderId(data.orderId)}</span></td>
                 </tr>
                 <tr>
                   <td style="padding: 5px 0; color: #6b7280; font-weight: 600;">Status:</td>
@@ -623,8 +681,9 @@ export async function sendOrderCompletedEmail(data: OrderEmailData) {
 
             <!-- Footer -->
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center;">
-              <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 14px;">Have a great day!</p>
-              <p style="margin: 0; color: #9ca3af; font-size: 12px;">Hotel Management System - Your satisfaction is our priority</p>
+              <img src="cid:${LOGO_CID}" alt="NEMSU Logo" style="width: 40px; height: 40px; margin-bottom: 10px; border-radius: 50%;">
+              <p style="margin: 0 0 5px 0; color: #6b7280; font-size: 14px;">NEMSU Hostel - North Eastern Mindanao State University</p>
+              <p style="margin: 0; color: #9ca3af; font-size: 12px;">Your satisfaction is our priority. Contact: 09222222222</p>
             </div>
           </div>
         </div>
@@ -638,9 +697,9 @@ export async function sendOrderCompletedEmail(data: OrderEmailData) {
       console.error("❌ Cannot send email: Email transporter not configured");
       return { success: false, error: "Email transporter not configured" };
     }
-    
+
     const result = await transporter.sendMail(mailOptions);
-    console.log(`✅ Order completed email sent to ${data.email} for order #${data.orderId}`);
+    console.log(`✅ Order completed email sent to ${data.email} for order ${formatOrderId(data.orderId)}`);
     return { success: true, messageId: result.messageId };
   } catch (error: any) {
     console.error("❌ Order completed email sending failed:", error.message || error);
@@ -649,6 +708,8 @@ export async function sendOrderCompletedEmail(data: OrderEmailData) {
 }
 
 export async function sendOrderCancelledEmail(data: OrderEmailData) {
+  const logoBase64 = getLogoBase64();
+
   const itemsHtml = data.items
     .map(
       (item) => `
@@ -663,10 +724,16 @@ export async function sendOrderCancelledEmail(data: OrderEmailData) {
     )
     .join("");
 
-  const mailOptions = {
+  const mailOptions: nodemailer.SendMailOptions = {
     from: `"Hotel Management System" <${process.env.EMAIL_USER}>`,
     to: data.email,
-    subject: `Order Cancelled #${data.orderId} - We're Sorry`,
+    subject: `Order Cancelled ${formatOrderId(data.orderId)} - We're Sorry`,
+    attachments: logoBase64 ? [{
+      filename: "logo.png",
+      content: logoBase64,
+      encoding: "base64",
+      cid: LOGO_CID,
+    }] : [],
     html: `
       <!DOCTYPE html>
       <html>
@@ -678,8 +745,9 @@ export async function sendOrderCancelledEmail(data: OrderEmailData) {
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
           <!-- Header -->
           <div style="background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); padding: 30px; text-align: center;">
-            <h1 style="color: white; margin: 0; font-size: 28px;">❌ Order Cancelled</h1>
-            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">We're sorry to inform you</p>
+            <img src="cid:${LOGO_CID}" alt="NEMSU Logo" style="width: 80px; height: 80px; margin-bottom: 15px; border-radius: 50%; opacity: 0.7;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">Order Cancelled</h1>
+            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">We're sorry to inform you from NEMSU Hostel</p>
           </div>
 
           <!-- Content -->
@@ -688,7 +756,7 @@ export async function sendOrderCancelledEmail(data: OrderEmailData) {
             <div style="background-color: #fef2f2; border-left: 4px solid #dc2626; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
               <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 1.6;">
                 <strong>Dear ${data.customerName},</strong><br><br>
-                We regret to inform you that your order #${data.orderId} has been cancelled by our team.
+                We regret to inform you that your order <strong>${formatOrderId(data.orderId)}</strong> has been cancelled by our team.
                 This could be due to various reasons such as item availability, delivery constraints, or other operational issues.
               </p>
             </div>
@@ -699,7 +767,7 @@ export async function sendOrderCancelledEmail(data: OrderEmailData) {
               <table style="width: 100%; font-size: 14px;">
                 <tr>
                   <td style="padding: 5px 0; color: #6b7280; font-weight: 600;">Order ID:</td>
-                  <td style="padding: 5px 0; color: #1f2937; text-align: right;">#${data.orderId}</td>
+                  <td style="padding: 5px 0; text-align: right;"><span style="background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); color: white; padding: 4px 12px; border-radius: 6px; font-weight: 700; font-size: 13px;">${formatOrderId(data.orderId)}</span></td>
                 </tr>
                 <tr>
                   <td style="padding: 5px 0; color: #6b7280; font-weight: 600;">Customer Name:</td>
@@ -752,8 +820,9 @@ export async function sendOrderCancelledEmail(data: OrderEmailData) {
 
             <!-- Footer -->
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center;">
-              <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 14px;">We hope to serve you better next time</p>
-              <p style="margin: 0; color: #9ca3af; font-size: 12px;">Hotel Management System - Your satisfaction is our priority</p>
+              <img src="cid:${LOGO_CID}" alt="NEMSU Logo" style="width: 40px; height: 40px; margin-bottom: 10px; border-radius: 50%; opacity: 0.7;">
+              <p style="margin: 0 0 5px 0; color: #6b7280; font-size: 14px;">NEMSU Hostel - North Eastern Mindanao State University</p>
+              <p style="margin: 0; color: #9ca3af; font-size: 12px;">We hope to serve you better next time. Contact: 09222222222</p>
             </div>
           </div>
         </div>
@@ -767,9 +836,9 @@ export async function sendOrderCancelledEmail(data: OrderEmailData) {
       console.error("❌ Cannot send email: Email transporter not configured");
       return { success: false, error: "Email transporter not configured" };
     }
-    
+
     const result = await transporter.sendMail(mailOptions);
-    console.log(`✅ Order cancelled email sent to ${data.email} for order #${data.orderId}`);
+    console.log(`✅ Order cancelled email sent to ${data.email} for order ${formatOrderId(data.orderId)}`);
     return { success: true, messageId: result.messageId };
   } catch (error: any) {
     console.error("❌ Order cancelled email sending failed:", error.message || error);

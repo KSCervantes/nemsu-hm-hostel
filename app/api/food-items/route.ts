@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import {
+  getAllFoodItems,
+  createFoodItem,
+  getFoodItemByCode,
+} from "@/lib/firebase-db";
+import { validateFoodItem } from "@/lib/validators";
 
 export async function GET() {
   try {
-    const items = await prisma.foodItem.findMany({
-      orderBy: { id: "asc" },
-    });
+    const items = await getAllFoodItems();
     return NextResponse.json(items);
   } catch (e) {
     console.error("Food items fetch error:", e);
@@ -18,41 +21,33 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { name, description, price, category, code, img, available } = body;
 
-    if (!name || !price) {
-      return NextResponse.json({ error: "name and price are required" }, { status: 400 });
+    // Validate input
+    const validation = validateFoodItem({ name, description, price, category, code, img, available });
+    if (!validation.valid) {
+      return NextResponse.json({ error: validation.errors.join("; ") }, { status: 400 });
     }
 
     // Check if code already exists (if code is provided)
     if (code) {
-      const existing = await prisma.foodItem.findUnique({
-        where: { code },
-      });
+      const existing = await getFoodItemByCode(code);
       if (existing) {
         return NextResponse.json({ error: "Code already exists" }, { status: 400 });
       }
     }
 
-    const item = await prisma.foodItem.create({
-      data: {
-        name,
-        description: description ?? null,
-        price: parseFloat(price),
-        category: category ?? null,
-        code: code ?? null,
-        img: img ?? null,
-        available: available ?? true,
-      },
+    const item = await createFoodItem({
+      name,
+      description: description ?? null,
+      price: parseFloat(price),
+      category: category ?? null,
+      code: code ?? null,
+      img: img ?? null,
+      available: available ?? true,
     });
 
     return NextResponse.json(item, { status: 201 });
   } catch (e: any) {
     console.error("Food item creation error:", e);
-
-    // Handle Prisma unique constraint error
-    if (e.code === 'P2002') {
-      return NextResponse.json({ error: "Code already exists" }, { status: 400 });
-    }
-
     return NextResponse.json({ error: "failed to create food item" }, { status: 500 });
   }
 }

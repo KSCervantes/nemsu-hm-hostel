@@ -4,11 +4,23 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "../components/Sidebar";
 import Swal from "sweetalert2";
+import { formatDateOnly } from "@/lib/date-utils";
+
+type AdminUser = {
+  id: number;
+  username: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export default function SettingsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [newAdmin, setNewAdmin] = useState({ username: "", password: "" });
+  const [addingAdmin, setAddingAdmin] = useState(false);
   const [settings, setSettings] = useState({
     // Theme Settings
     primaryColor: "#667eea",
@@ -39,6 +51,8 @@ export default function SettingsPage() {
     { label: "Orders", href: "/admin/orders" },
     { label: "Food Menu", href: "/admin/food-menu" },
     { label: "Archive", href: "/admin/archive" },
+    { label: "Completed", href: "/admin/Completed" },
+    { label: "Income", href: "/admin/Income" },
   ];
 
   const fontOptions = [
@@ -61,6 +75,23 @@ export default function SettingsPage() {
     { value: "18", label: "Extra Large (18px)" },
   ];
 
+  const fetchAdminUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const res = await fetch("/api/admin/register");
+      if (res.ok) {
+        const users = await res.json();
+        setAdminUsers(users);
+      } else {
+        console.error("Failed to fetch admin users");
+      }
+    } catch (error) {
+      console.error("Error fetching admin users:", error);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
   useEffect(() => {
     let hasToken = false;
     try {
@@ -73,36 +104,62 @@ export default function SettingsPage() {
       return;
     }
 
-    // Load settings from localStorage
-    const savedSettings = localStorage.getItem("admin_settings");
-    if (savedSettings) {
+    // Load settings from API
+    const loadSettings = async () => {
       try {
-        setSettings(JSON.parse(savedSettings));
-      } catch (e) {
-        console.error("Failed to parse settings:", e);
+        const res = await fetch("/api/admin/settings");
+        if (res.ok) {
+          const data = await res.json();
+          setSettings(data);
+        }
+      } catch (error) {
+        console.error("Error loading settings:", error);
+      } finally {
+        setLoading(false);
       }
-    }
-    setLoading(false);
+    };
+
+    loadSettings();
+    // Fetch admin users
+    fetchAdminUsers();
   }, [router]);
 
   const handleSaveSettings = async () => {
     setSaving(true);
 
-    // Simulate API call
-    setTimeout(() => {
-      // Save to localStorage
-      localStorage.setItem("admin_settings", JSON.stringify(settings));
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      });
 
-      setSaving(false);
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.details || errorData.error || "Failed to save settings");
+      }
+
+      const savedSettings = await res.json();
+      setSettings(savedSettings);
 
       Swal.fire({
         icon: "success",
         title: "Settings Saved!",
-        text: "Your settings have been updated successfully. Refresh the page to see changes.",
+        text: "Your settings have been updated successfully and will persist across browser refreshes.",
         confirmButtonColor: settings.primaryColor,
         confirmButtonText: "OK",
       });
-    }, 800);
+    } catch (error) {
+      console.error("Error saving settings:", error);
+      Swal.fire({
+        icon: "error",
+        title: "Failed to Save Settings",
+        text: error instanceof Error ? error.message : "An error occurred while saving your settings. Please try again.",
+        confirmButtonColor: settings.primaryColor,
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleResetSettings = async () => {
@@ -119,34 +176,107 @@ export default function SettingsPage() {
 
     if (!result.isConfirmed) return;
 
-    const defaultSettings = {
-      primaryColor: "#667eea",
-      secondaryColor: "#764ba2",
-      accentColor: "#10b981",
-      dangerColor: "#dc2626",
-      fontFamily: "system-ui",
-      fontSize: "14",
-      siteName: "Hostel Admin",
-      itemsPerPage: "10",
-      dateFormat: "MM/DD/YYYY",
-      timeFormat: "12h",
-      emailNotifications: true,
-      orderNotifications: true,
-      systemNotifications: true,
-      enableDebugMode: false,
-      sessionTimeout: "30",
-    };
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset" }),
+      });
 
-    setSettings(defaultSettings);
-    localStorage.setItem("admin_settings", JSON.stringify(defaultSettings));
+      if (!res.ok) {
+        throw new Error("Failed to reset settings");
+      }
 
-    Swal.fire({
-      icon: "success",
-      title: "Settings Reset!",
-      text: "All settings have been restored to defaults.",
-      timer: 2000,
-      showConfirmButton: false,
-    });
+      const resetSettings = await res.json();
+      setSettings(resetSettings);
+
+      Swal.fire({
+        icon: "success",
+        title: "Settings Reset!",
+        text: "All settings have been restored to defaults.",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    } catch (error) {
+      console.error("Error resetting settings:", error);
+      Swal.fire({
+        icon: "error",
+        title: "Failed to Reset Settings",
+        text: "An error occurred while resetting settings. Please try again.",
+        confirmButtonColor: settings.primaryColor,
+      });
+    }
+  };
+
+  const handleAddAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!newAdmin.username || !newAdmin.password) {
+      Swal.fire({
+        icon: "error",
+        title: "Validation Error",
+        text: "Please fill in both username and password.",
+        confirmButtonColor: settings.primaryColor,
+      });
+      return;
+    }
+
+    if (newAdmin.password.length < 6) {
+      Swal.fire({
+        icon: "error",
+        title: "Password Too Short",
+        text: "Password must be at least 6 characters long.",
+        confirmButtonColor: settings.primaryColor,
+      });
+      return;
+    }
+
+    setAddingAdmin(true);
+
+    try {
+      const res = await fetch("/api/admin/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: newAdmin.username,
+          password: newAdmin.password,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        Swal.fire({
+          icon: "error",
+          title: "Failed to Add Admin",
+          text: data.error || "An error occurred while creating the admin user.",
+          confirmButtonColor: settings.primaryColor,
+        });
+        return;
+      }
+
+      Swal.fire({
+        icon: "success",
+        title: "Admin Added!",
+        text: `Admin user "${data.username}" has been created successfully.`,
+        confirmButtonColor: settings.primaryColor,
+      });
+
+      // Reset form
+      setNewAdmin({ username: "", password: "" });
+
+      // Refresh admin users list
+      fetchAdminUsers();
+    } catch (error) {
+      Swal.fire({
+        icon: "error",
+        title: "Connection Error",
+        text: "Unable to connect to the server. Please try again.",
+        confirmButtonColor: settings.primaryColor,
+      });
+    } finally {
+      setAddingAdmin(false);
+    }
   };
 
   return (
@@ -850,6 +980,228 @@ export default function SettingsPage() {
                       </div>
                     </label>
                   </div>
+                </div>
+              </div>
+
+              {/* Admin User Management */}
+              <div
+                style={{
+                  background: "#fff",
+                  borderRadius: 12,
+                  padding: 24,
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                  marginBottom: 20,
+                }}
+              >
+                <h2
+                  style={{
+                    margin: "0 0 20px 0",
+                    fontSize: 20,
+                    color: "#1f2937",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  👥 Admin User Management
+                </h2>
+
+                {/* Add New Admin Form */}
+                <div
+                  style={{
+                    background: "#f9fafb",
+                    borderRadius: 8,
+                    padding: 20,
+                    marginBottom: 24,
+                    border: "1px solid #e5e7eb",
+                  }}
+                >
+                  <h3
+                    style={{
+                      margin: "0 0 16px 0",
+                      fontSize: 16,
+                      fontWeight: 600,
+                      color: "#1f2937",
+                    }}
+                  >
+                    Add New Admin User
+                  </h3>
+                  <form onSubmit={handleAddAdmin}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 16,
+                        marginBottom: 16,
+                      }}
+                    >
+                      <div>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: 13,
+                            fontWeight: 600,
+                            color: "#6b7280",
+                            marginBottom: 6,
+                          }}
+                        >
+                          Username
+                        </label>
+                        <input
+                          type="text"
+                          value={newAdmin.username}
+                          onChange={(e) =>
+                            setNewAdmin({ ...newAdmin, username: e.target.value })
+                          }
+                          placeholder="Enter username"
+                          required
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: 6,
+                            fontSize: 14,
+                            outline: "none",
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: 13,
+                            fontWeight: 600,
+                            color: "#6b7280",
+                            marginBottom: 6,
+                          }}
+                        >
+                          Password
+                        </label>
+                        <input
+                          type="password"
+                          value={newAdmin.password}
+                          onChange={(e) =>
+                            setNewAdmin({ ...newAdmin, password: e.target.value })
+                          }
+                          placeholder="Enter password (min 6 characters)"
+                          required
+                          minLength={6}
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: 6,
+                            fontSize: 14,
+                            outline: "none",
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={addingAdmin}
+                      style={{
+                        background: `linear-gradient(135deg, ${settings.primaryColor} 0%, ${settings.secondaryColor} 100%)`,
+                        color: "#fff",
+                        border: "none",
+                        padding: "10px 20px",
+                        borderRadius: 6,
+                        cursor: addingAdmin ? "not-allowed" : "pointer",
+                        fontSize: 14,
+                        fontWeight: 600,
+                        opacity: addingAdmin ? 0.6 : 1,
+                      }}
+                    >
+                      {addingAdmin ? "Adding..." : "➕ Add Admin User"}
+                    </button>
+                  </form>
+                </div>
+
+                {/* Existing Admin Users List */}
+                <div>
+                  <h3
+                    style={{
+                      margin: "0 0 16px 0",
+                      fontSize: 16,
+                      fontWeight: 600,
+                      color: "#1f2937",
+                    }}
+                  >
+                    Existing Admin Users ({adminUsers.length})
+                  </h3>
+                  {loadingUsers ? (
+                    <div style={{ textAlign: "center", padding: 20, color: "#6b7280" }}>
+                      Loading admin users...
+                    </div>
+                  ) : adminUsers.length === 0 ? (
+                    <div
+                      style={{
+                        textAlign: "center",
+                        padding: 20,
+                        color: "#6b7280",
+                        background: "#f9fafb",
+                        borderRadius: 8,
+                        border: "1px solid #e5e7eb",
+                      }}
+                    >
+                      No admin users found. Add one above to get started.
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 12,
+                      }}
+                    >
+                      {adminUsers.map((user) => (
+                        <div
+                          key={user.id}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: "12px 16px",
+                            background: "#f9fafb",
+                            borderRadius: 8,
+                            border: "1px solid #e5e7eb",
+                          }}
+                        >
+                          <div>
+                            <div
+                              style={{
+                                fontSize: 14,
+                                fontWeight: 600,
+                                color: "#1f2937",
+                                marginBottom: 4,
+                              }}
+                            >
+                              {user.username}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: "#6b7280",
+                              }}
+                            >
+                              Created: {formatDateOnly(user.createdAt)}
+                            </div>
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: "#9ca3af",
+                              padding: "4px 8px",
+                              background: "#fff",
+                              borderRadius: 4,
+                              border: "1px solid #e5e7eb",
+                            }}
+                          >
+                            ID: {user.id}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 

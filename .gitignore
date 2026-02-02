@@ -32,10 +32,32 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Firebase Admin SDK service account keys (SENSITIVE - NEVER COMMIT)
+*-firebase-adminsdk-*.json
+hm-hostel-firebase-adminsdk-*.json
+serviceAccountKey.json
+firebase-admin*.json
 
 # vercel
 .vercel
 
+# SQL database dumps
+*.sql
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Sensitive files
+nul
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

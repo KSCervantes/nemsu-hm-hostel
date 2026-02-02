@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import Swal from "sweetalert2";
+import { formatDate } from "@/lib/date-utils";
 
 type MenuItem = {
   id: number;
@@ -20,6 +21,7 @@ type OrderItem = {
   price: number;
   quantity: number;
   notes?: string;
+  img?: string;
 };
 
 type Order = {
@@ -57,16 +59,27 @@ export default function FoodMenu() {
   const menuSectionRef = useRef<HTMLDivElement | null>(null);
   const navRef = useRef<HTMLDivElement | null>(null);
 
-  // Address selection states
-  const [regions, setRegions] = useState<any[]>([]);
-  const [provinces, setProvinces] = useState<any[]>([]);
-  const [cities, setCities] = useState<any[]>([]);
-  const [barangays, setBarangays] = useState<any[]>([]);
-  const [selectedRegion, setSelectedRegion] = useState("");
-  const [selectedProvince, setSelectedProvince] = useState("");
-  const [selectedCity, setSelectedCity] = useState("");
+  // Address selection states - Lianga only
+  const liangaBarangays = [
+    { code: "001", name: "Anibongan" },
+    { code: "002", name: "Ban-as" },
+    { code: "003", name: "Banahao" },
+    { code: "004", name: "Baucawe" },
+    { code: "005", name: "Diatagon" },
+    { code: "006", name: "Ganayon" },
+    { code: "007", name: "Liatimco" },
+    { code: "008", name: "Manyayay" },
+    { code: "009", name: "Payasan" },
+    { code: "010", name: "Poblacion" },
+    { code: "011", name: "Saint Christine" },
+    { code: "012", name: "San Isidro" },
+    { code: "013", name: "San Pedro" },
+  ];
   const [selectedBarangay, setSelectedBarangay] = useState("");
   const [streetAddress, setStreetAddress] = useState("");
+
+  // Active category for real-time hover detection
+  const [activeCategory, setActiveCategory] = useState<"main" | "snacks" | "desserts" | "drinks">("main");
 
   useEffect(() => {
     fetch("/api/food-items")
@@ -86,12 +99,6 @@ export default function FoodMenu() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-
-    // Load regions
-    fetch("https://psgc.gitlab.io/api/regions/")
-      .then((res) => res.json())
-      .then((data) => setRegions(data))
-      .catch(() => {});
   }, []);
 
   // Sticky navigation scroll handler
@@ -115,88 +122,65 @@ export default function FoodMenu() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Load provinces when region changes
+  // Real-time category active detection based on scroll position
   useEffect(() => {
-    if (!selectedRegion) {
-      setProvinces([]);
-      setCities([]);
-      setBarangays([]);
-      setSelectedProvince("");
-      setSelectedCity("");
-      setSelectedBarangay("");
-      return;
-    }
-    fetch(`https://psgc.gitlab.io/api/regions/${selectedRegion}/provinces/`)
-      .then((res) => res.json())
-      .then((data) => {
-        setProvinces(data);
-        setCities([]);
-        setBarangays([]);
-        setSelectedProvince("");
-        setSelectedCity("");
-        setSelectedBarangay("");
-      })
-      .catch(() => {});
-  }, [selectedRegion]);
+    const handleCategoryScroll = () => {
+      const categories = ['main-dishes', 'snacks', 'desserts', 'drinks'];
+      const categoryMap: Record<string, "main" | "snacks" | "desserts" | "drinks"> = {
+        'main-dishes': 'main',
+        'snacks': 'snacks',
+        'desserts': 'desserts',
+        'drinks': 'drinks',
+      };
 
-  // Load cities when province changes
-  useEffect(() => {
-    if (!selectedProvince) {
-      setCities([]);
-      setBarangays([]);
-      setSelectedCity("");
-      setSelectedBarangay("");
-      return;
-    }
-    fetch(`https://psgc.gitlab.io/api/provinces/${selectedProvince}/cities-municipalities/`)
-      .then((res) => res.json())
-      .then((data) => {
-        setCities(data);
-        setBarangays([]);
-        setSelectedCity("");
-        setSelectedBarangay("");
-      })
-      .catch(() => {});
-  }, [selectedProvince]);
+      // Get the nav height to offset the detection
+      const navHeight = navRef.current?.offsetHeight || 80;
+      const detectionOffset = navHeight + 150; // Detection point below the sticky nav
+
+      let currentCategory: "main" | "snacks" | "desserts" | "drinks" = 'main';
+      let closestDistance = Infinity;
+
+      // Find which category is closest to the detection offset
+      for (const categoryId of categories) {
+        const element = document.getElementById(categoryId);
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          const distance = Math.abs(rect.top - detectionOffset);
+
+          // If this section's top is closest to our detection offset, it's the active one
+          if (rect.top <= detectionOffset && distance < closestDistance) {
+            closestDistance = distance;
+            currentCategory = categoryMap[categoryId];
+          }
+        }
+      }
+
+      setActiveCategory(currentCategory);
+    };
+
+    window.addEventListener('scroll', handleCategoryScroll);
+    handleCategoryScroll(); // Check initial state
+
+    return () => window.removeEventListener('scroll', handleCategoryScroll);
+  }, []);
 
   // Load barangays when city changes
   useEffect(() => {
-    if (!selectedCity) {
-      setBarangays([]);
-      setSelectedBarangay("");
-      return;
-    }
-    fetch(`https://psgc.gitlab.io/api/cities-municipalities/${selectedCity}/barangays/`)
-      .then((res) => res.json())
-      .then((data) => {
-        setBarangays(data);
-        setSelectedBarangay("");
-      })
-      .catch(() => {});
-  }, [selectedCity]);
+    // Lianga is hardcoded, no need to load from API
+    return () => {};
+  }, []);
 
   // Update address field when any location changes
   useEffect(() => {
     const parts = [];
     if (streetAddress) parts.push(streetAddress);
     if (selectedBarangay) {
-      const brgy = barangays.find((b) => b.code === selectedBarangay);
+      const brgy = liangaBarangays.find((b) => b.code === selectedBarangay);
       if (brgy) parts.push(brgy.name);
     }
-    if (selectedCity) {
-      const city = cities.find((c) => c.code === selectedCity);
-      if (city) parts.push(city.name);
-    }
-    if (selectedProvince) {
-      const prov = provinces.find((p) => p.code === selectedProvince);
-      if (prov) parts.push(prov.name);
-    }
-    if (selectedRegion) {
-      const reg = regions.find((r) => r.code === selectedRegion);
-      if (reg) parts.push(reg.name);
-    }
+    parts.push("Lianga, Surigao del Sur");
     setAddress(parts.join(", "));
-  }, [streetAddress, selectedBarangay, selectedCity, selectedProvince, selectedRegion, barangays, cities, provinces, regions]);
+  }, [streetAddress, selectedBarangay]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -214,19 +198,19 @@ export default function FoodMenu() {
   }, [selected]);
 
   const renderCategory = (categoryName: string, categoryKey: "main" | "snacks" | "desserts" | "drinks", categoryId: string) => (
-    <div id={categoryId} className="relative z-10">
+    <div id={categoryId} className="relative z-10" style={{ scrollMarginTop: '150px' }}>
       <h3 className="text-2xl font-bold text-amber-900 dark:text-amber-600 mb-6 pb-3 border-b-4 border-amber-700 dark:border-amber-500 inline-block drop-shadow-sm">{categoryName}</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 mt-6">
         {filteredMenu.filter((item) => item.category === categoryKey).map((item) => (
           <article
             key={item.id}
-            className={`group bg-white dark:bg-zinc-800 rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-700 shadow-lg hover:shadow-xl transition-transform transform hover:-translate-y-1 duration-150 flex flex-col ${
-              !item.available ? 'opacity-60 grayscale' : ''
+            className={`group bg-white dark:bg-zinc-800 rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-700 shadow-lg hover:shadow-2xl transition-all transform hover:-translate-y-2 duration-300 flex flex-col ${
+              !item.available ? 'opacity-60 grayscale' : 'hover:border-purple-300 dark:hover:border-purple-600'
             }`}
           >
             <div className="relative w-full h-56 shrink-0 overflow-hidden">
-              <img src={item.img} alt={item.name} className="w-full h-full object-cover transform group-hover:scale-105 transition duration-300" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-black/0 opacity-80" />
+              <img src={item.img} alt={item.name} className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-500" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/0 opacity-80 group-hover:opacity-100 transition-opacity duration-300" />
               {!item.available && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/60">
                   <span className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold text-lg shadow-lg">
@@ -242,10 +226,10 @@ export default function FoodMenu() {
               }`}>{item.name}</h3>
               <p className="text-sm text-zinc-700 dark:text-zinc-300 line-clamp-2 mb-3 grow">{item.description}</p>
               <div className="flex items-center justify-between mb-3">
-                <span className={`inline-flex items-center gap-2 bg-amber-50 text-amber-700 px-3 py-1 rounded-full font-bold ${
+                <span className={`inline-flex items-center gap-2 bg-purple-50 text-purple-700 px-3 py-1 rounded-full font-bold ${
                   !item.available ? 'line-through' : ''
                 }`}>₱{item.price}</span>
-                <span className="text-amber-600 font-bold text-sm">{item.code}</span>
+                <span className="text-purple-600 font-bold text-sm">{item.code}</span>
               </div>
               <button
                 onClick={() => {
@@ -254,13 +238,13 @@ export default function FoodMenu() {
                   setSelected(item);
                 }}
                 disabled={!item.available}
-                className={`w-full font-bold py-2 px-4 rounded-lg shadow-md flex items-center justify-center gap-2 ${
+                className={`w-full font-bold py-2 px-4 rounded-lg shadow-md flex items-center justify-center gap-2 relative overflow-hidden transition-all duration-200 ${
                   !item.available
                     ? 'bg-gray-400 cursor-not-allowed text-gray-200'
-                    : 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200'
+                    : 'bg-purple-600 text-white hover:shadow-lg hover:bg-purple-700 transform hover:-translate-y-0.5 group-hover:shadow-purple-500/50'
                 }`}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                 </svg>
                 Buy Now
@@ -295,11 +279,11 @@ export default function FoodMenu() {
         {/* Navigation Header */}
         <div
           ref={navRef}
-          className={`mb-12 pb-8 border-b border-zinc-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-sm rounded-lg p-4 shadow-lg transition-all duration-300 ${
-            isNavSticky ? 'fixed top-0 left-0 right-0 z-50 rounded-none shadow-2xl' : ''
+          className={`mb-12 pb-8 border-b border-zinc-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl rounded-lg p-4 shadow-xl transition-all duration-300 ${
+            isNavSticky ? 'fixed top-0 left-0 right-0 z-40 rounded-none shadow-2xl border-b-purple-500/20 bg-white dark:bg-zinc-900 py-4 w-full' : ''
           }`}
         >
-          <div className={`${isNavSticky ? 'max-w-7xl mx-auto' : ''} flex items-center gap-6`}>
+          <div className={`${isNavSticky ? 'max-w-7xl mx-auto px-6' : ''} flex items-center gap-6 pointer-events-auto`}>
             {/* Search Input */}
             <div className="relative">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -310,16 +294,92 @@ export default function FoodMenu() {
                 placeholder="Search dishes..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="pl-10 pr-4 py-2 rounded-full border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-amber-300 shadow-sm"
+                className="pl-10 pr-4 py-2 rounded-full border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-purple-300 shadow-sm"
               />
             </div>
 
             {/* Category Links */}
-            <div className="flex gap-6 items-center overflow-x-auto pb-2 ml-4">
-              <a href="#main-dishes" className="text-amber-600 dark:text-amber-500 font-semibold whitespace-nowrap border-b-2 border-amber-600 dark:border-amber-500 pb-1">Main Dishes</a>
-              <a href="#snacks" className="text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white font-medium whitespace-nowrap">Snacks</a>
-              <a href="#desserts" className="text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white font-medium whitespace-nowrap">Desserts</a>
-              <a href="#drinks" className="text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white font-medium whitespace-nowrap">Drinks</a>
+            <div className="flex gap-6 items-center overflow-x-auto pb-2 ml-4 pointer-events-auto">
+              <a
+                href="#main-dishes"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const element = document.getElementById('main-dishes');
+                  if (element) {
+                    const navHeight = navRef.current?.offsetHeight || 0;
+                    const offset = element.getBoundingClientRect().top + window.scrollY - navHeight - 20;
+                    window.scrollTo({ top: offset, behavior: 'smooth' });
+                  }
+                }}
+                className={`font-semibold whitespace-nowrap transition-all duration-300 pb-1 border-b-2 cursor-pointer ${
+                  activeCategory === 'main'
+                    ? 'text-purple-600 dark:text-purple-500 border-purple-600 dark:border-purple-500'
+                    : 'text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white border-transparent hover:border-purple-300'
+                }`}
+              >
+                Main Dishes
+              </a>
+              <a
+                href="#snacks"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const element = document.getElementById('snacks');
+                  if (element) {
+                    const navHeight = navRef.current?.offsetHeight || 0;
+                    const offset = element.getBoundingClientRect().top + window.scrollY - navHeight - 20;
+                    window.scrollTo({ top: offset, behavior: 'smooth' });
+                  }
+                }}
+                className={`font-semibold whitespace-nowrap transition-all duration-300 pb-1 border-b-2 cursor-pointer ${
+                  activeCategory === 'snacks'
+                    ? 'text-purple-600 dark:text-purple-500 border-purple-600 dark:border-purple-500'
+                    : 'text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white border-transparent hover:border-purple-300'
+                }`}
+              >
+                Snacks
+              </a>
+              <a
+                href="#desserts"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const element = document.getElementById('desserts');
+                  if (element) {
+                    const navHeight = navRef.current?.offsetHeight || 0;
+                    const offset = element.getBoundingClientRect().top + window.scrollY - navHeight - 20;
+                    window.scrollTo({ top: offset, behavior: 'smooth' });
+                  }
+                }}
+                className={`font-semibold whitespace-nowrap transition-all duration-300 pb-1 border-b-2 cursor-pointer ${
+                  activeCategory === 'desserts'
+                    ? 'text-purple-600 dark:text-purple-500 border-purple-600 dark:border-purple-500'
+                    : 'text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white border-transparent hover:border-purple-300'
+                }`}
+              >
+                Desserts
+              </a>
+              <a
+                href="#drinks"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const element = document.getElementById('drinks');
+                  if (element) {
+                    const navHeight = navRef.current?.offsetHeight || 0;
+                    const offset = element.getBoundingClientRect().top + window.scrollY - navHeight - 20;
+                    window.scrollTo({ top: offset, behavior: 'smooth' });
+                  }
+                }}
+                className={`font-semibold whitespace-nowrap transition-all duration-300 pb-1 border-b-2 cursor-pointer ${
+                  activeCategory === 'drinks'
+                    ? 'text-purple-600 dark:text-purple-500 border-purple-600 dark:border-purple-500'
+                    : 'text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white border-transparent hover:border-purple-300'
+                }`}
+              >
+                Drinks
+              </a>
             </div>
           </div>
         </div>
@@ -330,7 +390,6 @@ export default function FoodMenu() {
         {/* Section Title */}
         <div className="flex items-center justify-between mb-8 relative z-10">
           <h2 className="text-3xl md:text-4xl font-bold text-black dark:text-white drop-shadow-sm">Signature Dishes</h2>
-          <a href="#menu" className="text-sm text-zinc-700 dark:text-zinc-300 hover:underline font-medium">See full menu →</a>
         </div>
 
         {/* Menu Items by Category */}
@@ -394,7 +453,7 @@ export default function FoodMenu() {
                             try { localStorage.setItem('order_type', 'DELIVERY'); } catch {}
                             // Prefill selected item and open form
                             const existing = currentOrderItems.slice();
-                            existing.push({ id: selected.id, name: selected.name, price: selected.price, quantity: 1 });
+                            existing.push({ id: selected.id, name: selected.name, price: selected.price, quantity: 1, img: selected.img });
                             setCurrentOrderItems(existing);
                             Swal.close();
                             setIsOrderFormOpen(true);
@@ -403,7 +462,7 @@ export default function FoodMenu() {
                             setOrderType('PICKUP');
                             try { localStorage.setItem('order_type', 'PICKUP'); } catch {}
                             const existing = currentOrderItems.slice();
-                            existing.push({ id: selected.id, name: selected.name, price: selected.price, quantity: 1 });
+                            existing.push({ id: selected.id, name: selected.name, price: selected.price, quantity: 1, img: selected.img });
                             setCurrentOrderItems(existing);
                             Swal.close();
                             setIsOrderFormOpen(true);
@@ -411,7 +470,7 @@ export default function FoodMenu() {
                         }
                       });
                     }}
-                    className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white px-4 py-2 rounded-lg font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 flex items-center justify-center gap-2"
+                    className="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 flex items-center justify-center gap-2"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -455,7 +514,7 @@ export default function FoodMenu() {
                 <h4 className="text-lg font-semibold mb-3 text-blue-900 dark:text-blue-100">📍 Pickup Location Map</h4>
                 <div className="rounded-lg overflow-hidden h-80 mb-3 border border-blue-200 dark:border-blue-700">
                   <iframe
-                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3950.0!2d126.09362110591124!3d8.633934380327007!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zOMKwMzgnMDIuMiJOIDEyNsKwMDUnMzcuMCJF!5e0!3m2!1sen!2sph!4v1609459200000!5m2!1sen!2sph"
+                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d1500!2d126.093306!3d8.633472!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zOMKwMzgnMDAuNSJOIDEyNsKwMDUnMzUuOSJF!5e0!3m2!1sen!2sph!4v1609459200000!5m2!1sen!2sph"
                     width="100%"
                     height="100%"
                     style={{ border: 0 }}
@@ -465,7 +524,7 @@ export default function FoodMenu() {
                   ></iframe>
                 </div>
                 <p className="text-sm text-blue-800 dark:text-blue-200 font-medium">
-                  📌 <strong>NEMSU Lianga Campus</strong><br />
+                  📌 <strong>NEMSU-Lianga Campus</strong><br />
                   Surigao - Davao Coastal Rd, Lianga, Surigao del Sur
                 </p>
               </div>
@@ -493,37 +552,10 @@ export default function FoodMenu() {
                 <label className="block text-sm font-semibold mb-1">Delivery Address</label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                   <div>
-                    <label className="block text-xs font-medium mb-1">Region</label>
-                    <select value={selectedRegion} onChange={(e) => setSelectedRegion(e.target.value)} className="w-full border px-3 py-2 rounded">
-                      <option value="">-- Select Region --</option>
-                      {regions.map((r) => (
-                        <option key={r.code} value={r.code}>{r.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1">Province</label>
-                    <select value={selectedProvince} onChange={(e) => setSelectedProvince(e.target.value)} disabled={!selectedRegion} className="w-full border px-3 py-2 rounded disabled:bg-gray-100">
-                      <option value="">-- Select Province --</option>
-                      {provinces.map((p) => (
-                        <option key={p.code} value={p.code}>{p.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1">City/Municipality</label>
-                    <select value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)} disabled={!selectedProvince} className="w-full border px-3 py-2 rounded disabled:bg-gray-100">
-                      <option value="">-- Select City/Municipality --</option>
-                      {cities.map((c) => (
-                        <option key={c.code} value={c.code}>{c.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
                     <label className="block text-xs font-medium mb-1">Barangay</label>
-                    <select value={selectedBarangay} onChange={(e) => setSelectedBarangay(e.target.value)} disabled={!selectedCity} className="w-full border px-3 py-2 rounded disabled:bg-gray-100">
+                    <select value={selectedBarangay} onChange={(e) => setSelectedBarangay(e.target.value)} className="w-full border px-3 py-2 rounded">
                       <option value="">-- Select Barangay --</option>
-                      {barangays.map((b) => (
+                      {liangaBarangays.map((b) => (
                         <option key={b.code} value={b.code}>{b.name}</option>
                       ))}
                     </select>
@@ -534,7 +566,7 @@ export default function FoodMenu() {
                   <input value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} placeholder="e.g., 123 Main Street, Unit 5B" className="w-full border px-3 py-2 rounded" />
                 </div>
                 <div className="mt-2 p-2 bg-gray-50 rounded border text-sm text-gray-700">
-                  <strong>Full Address:</strong> {address || "Please select location above"}
+                  <strong>Full Address:</strong> {address || "Please select barangay above"}
                 </div>
               </div>
               )}
@@ -580,7 +612,7 @@ export default function FoodMenu() {
                         if (exists) {
                           return prev.map((p) => p.id === menuItem.id ? { ...p, quantity: p.quantity + newItemQty } : p);
                         }
-                        return [...prev, { id: menuItem.id, name: menuItem.name, price: menuItem.price, quantity: newItemQty }];
+                        return [...prev, { id: menuItem.id, name: menuItem.name, price: menuItem.price, quantity: newItemQty, img: menuItem.img }];
                       });
 
                       // reset selector
@@ -598,6 +630,7 @@ export default function FoodMenu() {
                 <table className="w-full text-sm">
                   <thead className="bg-zinc-100">
                     <tr>
+                      <th className="p-2 text-left">Image</th>
                       <th className="p-2 text-left">Item Name</th>
                       <th className="p-2 text-left">Quantity</th>
                       <th className="p-2 text-left">Special Instructions</th>
@@ -608,6 +641,11 @@ export default function FoodMenu() {
                   <tbody>
                     {currentOrderItems.map((it, idx) => (
                       <tr key={idx} className="border-t">
+                        <td className="p-2">
+                          {it.img && (
+                            <img src={it.img} alt={it.name} className="w-12 h-12 object-cover rounded" />
+                          )}
+                        </td>
                         <td className="p-2">{it.name}</td>
                         <td className="p-2">
                           <input type="number" min={1} value={it.quantity} onChange={(e) => {
@@ -669,11 +707,11 @@ export default function FoodMenu() {
 
                 // Validate delivery address for DELIVERY orders
                 if (orderType === 'DELIVERY') {
-                  if (!selectedRegion || !selectedProvince || !selectedCity || !selectedBarangay) {
+                  if (!selectedBarangay) {
                     Swal.fire({
                       icon: 'warning',
                       title: 'Incomplete Address',
-                      text: 'Please complete your delivery address (Region, Province, City/Municipality, and Barangay)',
+                      text: 'Please select a barangay for your delivery address',
                       confirmButtonColor: '#f97316'
                     });
                     return;
@@ -792,9 +830,6 @@ export default function FoodMenu() {
                   setAddress("");
                   setDate("");
                   setTime("");
-                  setSelectedRegion("");
-                  setSelectedProvince("");
-                  setSelectedCity("");
                   setSelectedBarangay("");
                   setStreetAddress("");
                   setIsOrderFormOpen(false);
@@ -807,7 +842,7 @@ export default function FoodMenu() {
                     confirmButtonColor: '#dc2626'
                   });
                 }
-              }} className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white px-4 py-2 rounded-lg font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2">
+              }} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>

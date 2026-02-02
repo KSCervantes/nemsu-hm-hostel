@@ -1,11 +1,15 @@
-import { PrismaClient } from "@prisma/client";
+/**
+ * @deprecated This file is deprecated. Use lib/firebase-db.ts instead.
+ * The application has been migrated from Prisma/MySQL to Firebase.
+ *
+ * All database operations are now handled through Firebase Firestore.
+ * See: lib/firebase.ts for Firebase configuration
+ * See: lib/firebase-db.ts for database operations
+ */
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
+// Re-export from firebase-db to prevent import errors
+export * from "./firebase-db";
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log: ["error", "warn"],
-  });
-
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+console.warn(
+  "⚠️ lib/prisma.ts is deprecated. Please update your imports to use lib/firebase-db.ts"
+);

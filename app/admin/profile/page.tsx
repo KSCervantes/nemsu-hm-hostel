@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "../components/Sidebar";
 import Swal from "sweetalert2";
+import { formatDateOnly } from "@/lib/date-utils";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -29,39 +30,94 @@ export default function ProfilePage() {
     { label: "Orders", href: "/admin/orders" },
     { label: "Food Menu", href: "/admin/food-menu" },
     { label: "Archive", href: "/admin/archive" },
+    { label: "Completed", href: "/admin/Completed" },
+    { label: "Income", href: "/admin/Income" },
   ];
 
   useEffect(() => {
-    let hasToken = false;
+    let token: string | null = null;
     try {
-      hasToken = Boolean(localStorage.getItem("admin_token"));
+      token = localStorage.getItem("admin_token");
     } catch (e) {
-      hasToken = false;
+      token = null;
     }
-    if (!hasToken) {
+    if (!token) {
       router.push("/admin/login");
       return;
     }
 
-    // Simulate loading admin data
-    // In a real app, you would fetch this from an API
-    setTimeout(() => {
-      const mockData = {
-        username: "admin",
-        email: "admin@hostel.com",
-        role: "Administrator",
-        createdAt: "2025-01-15",
-      };
-      setAdminData(mockData);
-      setEditForm({
-        username: mockData.username,
-        email: mockData.email,
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
-      });
-      setLoading(false);
-    }, 500);
+    // Fetch admin profile from API
+    const fetchProfile = async () => {
+      try {
+        const res = await fetch("/api/admin/profile", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) {
+          // If unauthorized, redirect to login
+          if (res.status === 401) {
+            localStorage.removeItem("admin_token");
+            router.push("/admin/login");
+            return;
+          }
+          throw new Error("Failed to fetch profile");
+        }
+
+        const data = await res.json();
+
+        // Handle Firebase Timestamp format (comes as {_seconds, _nanoseconds} or string)
+        let createdAtStr = "";
+        if (data.createdAt) {
+          if (data.createdAt._seconds) {
+            // Firebase Timestamp format
+            createdAtStr = new Date(data.createdAt._seconds * 1000).toISOString().split("T")[0];
+          } else if (typeof data.createdAt === "string") {
+            createdAtStr = new Date(data.createdAt).toISOString().split("T")[0];
+          } else if (data.createdAt.seconds) {
+            // Alternative Timestamp format
+            createdAtStr = new Date(data.createdAt.seconds * 1000).toISOString().split("T")[0];
+          }
+        }
+
+        const profileData = {
+          username: data.username || "admin",
+          email: data.email || "",
+          role: "Administrator",
+          createdAt: createdAtStr,
+        };
+        setAdminData(profileData);
+        setEditForm({
+          username: profileData.username,
+          email: profileData.email,
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: "",
+        });
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+        // Fallback to stored username
+        const storedUsername = localStorage.getItem("admin_username") || "admin";
+        setAdminData({
+          username: storedUsername,
+          email: "",
+          role: "Administrator",
+          createdAt: "",
+        });
+        setEditForm({
+          username: storedUsername,
+          email: "",
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: "",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfile();
   }, [router]);
 
   const handleSaveChanges = async () => {
@@ -121,12 +177,33 @@ export default function ProfilePage() {
 
     setSaving(true);
 
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch("/api/admin/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          username: editForm.username,
+          email: editForm.email,
+          currentPassword: editForm.currentPassword || undefined,
+          newPassword: editForm.newPassword || undefined,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to update profile");
+      }
+
+      // Update local state with new data
       setAdminData({
         ...adminData,
-        username: editForm.username,
-        email: editForm.email,
+        username: data.user?.username || editForm.username,
+        email: data.user?.email || editForm.email,
       });
 
       setSaving(false);
@@ -135,7 +212,9 @@ export default function ProfilePage() {
       Swal.fire({
         icon: "success",
         title: "Profile Updated!",
-        text: "Your profile has been updated successfully",
+        text: editForm.newPassword
+          ? "Your profile and password have been updated successfully"
+          : "Your profile has been updated successfully",
         timer: 2000,
         showConfirmButton: false,
       });
@@ -143,11 +222,21 @@ export default function ProfilePage() {
       // Clear password fields
       setEditForm({
         ...editForm,
+        username: data.user?.username || editForm.username,
+        email: data.user?.email || editForm.email,
         currentPassword: "",
         newPassword: "",
         confirmPassword: "",
       });
-    }, 1000);
+    } catch (error: any) {
+      setSaving(false);
+      Swal.fire({
+        icon: "error",
+        title: "Update Failed",
+        text: error.message || "Failed to update profile",
+        confirmButtonColor: "#dc2626",
+      });
+    }
   };
 
   const handleCancelEdit = () => {
@@ -205,7 +294,7 @@ export default function ProfilePage() {
                     <h2 style={{ margin: 0, fontSize: 24, color: "#1f2937" }}>{adminData.username}</h2>
                     <p style={{ margin: "4px 0 0 0", color: "#6b7280", fontSize: 14 }}>{adminData.role}</p>
                     <p style={{ margin: "4px 0 0 0", color: "#9ca3af", fontSize: 12 }}>
-                      Member since {new Date(adminData.createdAt).toLocaleDateString()}
+                      Member since {formatDateOnly(adminData.createdAt)}
                     </p>
                   </div>
                 </div>

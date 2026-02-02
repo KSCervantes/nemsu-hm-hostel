@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "../components/Sidebar";
 import AdminHeader from "../components/AdminHeader";
@@ -23,6 +23,8 @@ export default function AdminFoodMenuPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<FoodItem | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -39,6 +41,7 @@ export default function AdminFoodMenuPage() {
     { label: "Orders", href: "/admin/orders" },
     { label: "Food Menu", href: "/admin/food-menu" },
     { label: "Archive", href: "/admin/archive" },
+    { label: "Completed", href: "/admin/Completed" },
     { label: "Income", href: "/admin/Income" },
   ];
 
@@ -94,6 +97,77 @@ export default function AdminFoodMenuPage() {
       available: item.available,
     });
     setShowForm(true);
+  }
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (!validTypes.includes(file.type)) {
+      Swal.fire({
+        icon: "error",
+        title: "Invalid File Type",
+        text: "Please upload a JPEG, PNG, WebP, or GIF image.",
+        confirmButtonColor: "#dc2626",
+      });
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      Swal.fire({
+        icon: "error",
+        title: "File Too Large",
+        text: "Maximum file size is 5MB.",
+        confirmButtonColor: "#dc2626",
+      });
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      const formDataUpload = new FormData();
+      formDataUpload.append("file", file);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formDataUpload,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Upload failed");
+      }
+
+      setFormData({ ...formData, img: data.url });
+
+      Swal.fire({
+        icon: "success",
+        title: "Image Uploaded!",
+        text: "Your image has been uploaded successfully.",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      Swal.fire({
+        icon: "error",
+        title: "Upload Failed",
+        text: error.message || "Failed to upload image. Please try again.",
+        confirmButtonColor: "#dc2626",
+      });
+    } finally {
+      setUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -223,33 +297,33 @@ export default function AdminFoodMenuPage() {
           {!loading && items.length === 0 && <div>No items found. Add your first product!</div>}
 
           {!loading && items.length > 0 && (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+            <div style={{ overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: 8 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, background: "#fff" }}>
                 <thead>
-                  <tr style={{ textAlign: "left", borderBottom: "2px solid #ddd", background: "#fafafa" }}>
-                    <th style={{ padding: "10px 8px" }}>ID</th>
-                    <th style={{ padding: "10px 8px" }}>Name</th>
-                    <th style={{ padding: "10px 8px" }}>Category</th>
-                    <th style={{ padding: "10px 8px" }}>Code</th>
-                    <th style={{ padding: "10px 8px" }}>Price</th>
-                    <th style={{ padding: "10px 8px" }}>Available</th>
-                    <th style={{ padding: "10px 8px" }}>Actions</th>
+                  <tr style={{ textAlign: "left", background: "#f8fafc", borderBottom: "2px solid #e5e7eb" }}>
+                    <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>ID</th>
+                    <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Name</th>
+                    <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Category</th>
+                    <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Code</th>
+                    <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Price</th>
+                    <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Available</th>
+                    <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((item) => (
-                    <tr key={item.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                      <td style={{ padding: "10px 8px" }}>{item.id}</td>
-                      <td style={{ padding: "10px 8px" }}>{item.name}</td>
-                      <td style={{ padding: "10px 8px" }}>{item.category || "—"}</td>
-                      <td style={{ padding: "10px 8px" }}>{item.code || "—"}</td>
-                      <td style={{ padding: "10px 8px", fontWeight: 600 }}>₱{item.price}</td>
-                      <td style={{ padding: "10px 8px" }}>
+                    <tr key={item.id} style={{ borderBottom: "1px solid #e5e7eb" }}>
+                      <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>{item.id}</td>
+                      <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>{item.name}</td>
+                      <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>{item.category || "—"}</td>
+                      <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>{item.code || "—"}</td>
+                      <td style={{ padding: "12px", fontWeight: 600, borderRight: "1px solid #e5e7eb" }}>₱{item.price}</td>
+                      <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>
                         <span style={{ background: item.available ? "#d1fae5" : "#fee2e2", color: item.available ? "#065f46" : "#991b1b", padding: "4px 8px", borderRadius: 4, fontSize: 12, fontWeight: 600 }}>
                           {item.available ? "Yes" : "No"}
                         </span>
                       </td>
-                      <td style={{ padding: "10px 8px", display: "flex", gap: 8 }}>
+                      <td style={{ padding: "12px", display: "flex", gap: 8 }}>
                         <button onClick={() => handleEdit(item)} style={{ background: "#0070f3", color: "#fff", border: "none", padding: "6px 10px", borderRadius: 4, cursor: "pointer", fontSize: 12 }}>
                           Edit
                         </button>
@@ -319,23 +393,82 @@ export default function AdminFoodMenuPage() {
               </div>
 
               <div style={{ marginBottom: 12 }}>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>Image URL</label>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>Product Image</label>
+
+                {/* File Upload */}
+                <div style={{ marginBottom: 12 }}>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    onChange={handleImageUpload}
+                    style={{ display: "none" }}
+                    id="image-upload"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    style={{
+                      background: uploading ? "#9ca3af" : "#10b981",
+                      color: "#fff",
+                      border: "none",
+                      padding: "10px 16px",
+                      borderRadius: 6,
+                      cursor: uploading ? "not-allowed" : "pointer",
+                      fontWeight: 600,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    {uploading ? (
+                      <>
+                        <span style={{ display: "inline-block", width: 16, height: 16, border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>📷 Upload Image</>
+                    )}
+                  </button>
+                  <small style={{ color: "#666", fontSize: 12, display: "block", marginTop: 4 }}>
+                    Supported: JPEG, PNG, WebP, GIF (max 5MB)
+                  </small>
+                </div>
+
+                {/* OR Divider */}
+                <div style={{ display: "flex", alignItems: "center", margin: "12px 0" }}>
+                  <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
+                  <span style={{ padding: "0 12px", color: "#9ca3af", fontSize: 12, fontWeight: 600 }}>OR</span>
+                  <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
+                </div>
+
+                {/* URL Input */}
+                <label style={{ display: "block", fontWeight: 500, marginBottom: 4, fontSize: 13, color: "#6b7280" }}>Paste Image URL</label>
                 <input
                   value={formData.img}
                   onChange={(e) => setFormData({ ...formData, img: e.target.value })}
-                  placeholder="Paste image URL here (e.g., https://example.com/image.jpg or /img/product.webp)"
+                  placeholder="https://example.com/image.jpg"
                   style={{ width: "100%", padding: 8, border: "1px solid #ddd", borderRadius: 6 }}
                 />
-                <small style={{ color: "#666", fontSize: 12, display: "block", marginTop: 4 }}>
-                  💡 Tip: Right-click any image on the web → "Copy image address" → Paste here
-                </small>
+
+                {/* Image Preview */}
                 {formData.img && (
-                  <div style={{ marginTop: 8, padding: 8, background: "#f9fafb", borderRadius: 6, border: "1px solid #e5e7eb" }}>
-                    <p style={{ margin: "0 0 8px 0", fontSize: 12, fontWeight: 600, color: "#374151" }}>Preview:</p>
+                  <div style={{ marginTop: 12, padding: 12, background: "#f9fafb", borderRadius: 8, border: "1px solid #e5e7eb" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "#374151" }}>Preview:</p>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, img: "" })}
+                        style={{ background: "#fee2e2", color: "#dc2626", border: "none", padding: "4px 8px", borderRadius: 4, cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                      >
+                        ✕ Remove
+                      </button>
+                    </div>
                     <img
                       src={formData.img}
                       alt="Preview"
-                      style={{ maxWidth: "100%", maxHeight: 200, objectFit: "contain", borderRadius: 4 }}
+                      style={{ maxWidth: "100%", maxHeight: 200, objectFit: "contain", borderRadius: 6, border: "1px solid #e5e7eb" }}
                       onError={(e) => {
                         (e.target as HTMLImageElement).style.display = "none";
                         const errorMsg = (e.target as HTMLImageElement).nextElementSibling as HTMLElement;
@@ -348,6 +481,12 @@ export default function AdminFoodMenuPage() {
                   </div>
                 )}
               </div>
+
+              <style jsx>{`
+                @keyframes spin {
+                  to { transform: rotate(360deg); }
+                }
+              `}</style>
 
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                 <button type="button" onClick={resetForm} style={{ background: "#f3f4f6", border: "1px solid #d1d5db", padding: "8px 16px", borderRadius: 6, cursor: "pointer" }}>

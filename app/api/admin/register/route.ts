@@ -1,6 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import bcrypt from "bcryptjs";
+import {
+  getAllAdminUsers,
+  findAdminUserByUsername,
+  createAdminUser,
+} from "@/lib/firebase-db";
+
+export async function GET() {
+  try {
+    const users = await getAllAdminUsers();
+    // Map to exclude passwordHash
+    const safeUsers = users.map(u => ({
+      id: u.id,
+      username: u.username,
+      createdAt: u.createdAt,
+      updatedAt: u.updatedAt,
+    }));
+    return NextResponse.json(safeUsers, { status: 200 });
+  } catch (e) {
+    console.error("Failed to fetch admin users:", e);
+    return NextResponse.json({ error: "failed to fetch admin users" }, { status: 500 });
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,15 +30,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "username and password required" }, { status: 400 });
     }
 
-    const existing = await prisma.adminUser.findUnique({ where: { username } });
+    const existing = await findAdminUserByUsername(username);
     if (existing) {
       return NextResponse.json({ error: "username already exists" }, { status: 409 });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
-    const user = await prisma.adminUser.create({ data: { username, passwordHash } });
+    const user = await createAdminUser(username, password);
     return NextResponse.json({ id: user.id, username: user.username }, { status: 201 });
   } catch (e) {
+    console.error("Failed to register admin user:", e);
     return NextResponse.json({ error: "failed to register" }, { status: 500 });
   }
 }

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Sidebar from "../components/Sidebar";
 import AdminHeader from "../components/AdminHeader";
 import { useRouter } from "next/navigation";
+import { formatDateOnly, toDateObject } from "@/lib/date-utils";
 
 interface OrderData {
   id: number;
@@ -31,6 +32,7 @@ export default function AdminDashboard() {
     { label: "Orders", href: "/admin/orders" },
     { label: "Food Menu", href: "/admin/food-menu" },
     { label: "Archive", href: "/admin/archive" },
+    { label: "Completed", href: "/admin/Completed" },
     { label: "Income", href: "/admin/Income" },
   ];
 
@@ -46,67 +48,38 @@ export default function AdminDashboard() {
       return;
     }
 
-    // Fetch orders and calculate analytics
-    fetch("/api/orders")
-      .then((res) => res.json())
-      .then((data: OrderData[]) => {
-        if (Array.isArray(data)) {
-          setOrders(data);
-          setStats((prev) => ({ ...prev, orders: data.length }));
+    // Fetch actual dashboard metrics from API
+    Promise.all([
+      fetch("/api/dashboard/metrics").then(res => res.json()),
+      fetch("/api/orders").then(res => res.json())
+    ])
+      .then(([metricsData, ordersData]) => {
+        // Set stats with actual data
+        if (metricsData.stats) {
+          setStats(metricsData.stats);
+        }
 
-          // Calculate status counts
-          const statusCounts = { PENDING: 0, ACCEPTED: 0, COMPLETED: 0, CANCELLED: 0 };
-          data.forEach((order) => {
-            if (order.status in statusCounts) {
-              statusCounts[order.status as keyof typeof statusCounts]++;
-            }
-          });
+        // Set chart data with actual data
+        if (metricsData.chartData) {
+          setChartData(metricsData.chartData);
+        }
 
-          // Calculate daily orders (last 7 days)
-          const today = new Date();
-          const last7Days = Array.from({ length: 7 }, (_, i) => {
-            const d = new Date(today);
-            d.setDate(d.getDate() - (6 - i));
-            return d.toISOString().split("T")[0];
-          });
-
-          const dailyOrders = last7Days.map((date) => ({
-            date,
-            count: data.filter((order) => order.createdAt.startsWith(date)).length,
-          }));
-
-          // Calculate daily revenue for last 7 days
-          const dailyRevenue = last7Days.map((date) => {
-            const dayRevenue = data
-              .filter((order) => order.status === "COMPLETED" && order.createdAt.startsWith(date))
-              .reduce((sum, order) => {
-                const orderTotal = order.items.reduce(
-                  (itemSum, item) => itemSum + item.quantity * parseFloat(item.unitPrice),
-                  0
-                );
-                return sum + orderTotal;
-              }, 0);
-            return { date, revenue: dayRevenue };
-          });
-
-          // Calculate total revenue
-          const totalRevenue = data
-            .filter((order) => order.status === "COMPLETED")
-            .reduce((sum, order) => {
-              const orderTotal = order.items.reduce(
-                (itemSum, item) => itemSum + item.quantity * parseFloat(item.unitPrice),
-                0
-              );
-              return sum + orderTotal;
-            }, 0);
-
-          setChartData({ statusCounts, dailyOrders, dailyRevenue, totalRevenue });
-
-          // Calculate filtered orders data (initially 7 days)
-          calculateFilteredOrders(data, '7days');
+        // Set orders
+        if (Array.isArray(ordersData)) {
+          setOrders(ordersData);
         }
       })
-      .catch(() => {});
+      .catch((error) => {
+        console.error("Failed to fetch dashboard data:", error);
+        // Fallback: still fetch orders even if metrics fail
+        fetch("/api/orders")
+          .then(res => res.json())
+          .then((data: OrderData[]) => {
+            if (Array.isArray(data)) {
+              setOrders(data);
+            }
+          });
+      });
   }, [router]);
 
   // Function to calculate filtered orders based on selected time period
@@ -145,10 +118,15 @@ export default function AdminDashboard() {
 
     const filtered = periods.map((period) => {
       const periodOrders = data.filter((order) => {
+        // Convert Firebase Timestamp to ISO string for comparison
+        const dateObj = toDateObject(order.createdAt);
+        if (!dateObj) return false;
+        const dateStr = dateObj.toISOString().split('T')[0]; // YYYY-MM-DD format
+
         if (filter === 'monthly') {
-          return order.createdAt.startsWith(period);
+          return dateStr.startsWith(period); // period is YYYY-MM
         }
-        return order.createdAt.startsWith(period);
+        return dateStr.startsWith(period); // period is YYYY-MM-DD
       });
 
       const statusBreakdown = {
@@ -180,19 +158,71 @@ export default function AdminDashboard() {
           <AdminHeader title="Dashboard" subtitle="Monitor your business performance" breadcrumbs={["Home", "Dashboard"]} />
           <div style={{ padding: 32 }}>
 
-          {/* Stats Cards */}
-          <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 32 }}>
-            <StatCard label="Total Orders" value={stats.orders} />
-            <StatCard label="Pending Orders" value={chartData.statusCounts.PENDING} />
-            <StatCard label="Accepted Orders" value={chartData.statusCounts.ACCEPTED} />
-            <StatCard label="Completed Orders" value={chartData.statusCounts.COMPLETED} />
+          {/* Summary Stats Cards */}
+          <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 20, marginBottom: 32 }}>
+            {/* Total Orders Card - Primary */}
+            <div style={{
+              background: "#ffffff",
+              padding: 28,
+              borderRadius: 14,
+              border: "2px solid #e5e7eb",
+              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
+              position: "relative",
+              overflow: "hidden"
+            }}>
+              <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>Total Orders</div>
+              <div style={{ fontSize: 36, fontWeight: 800, color: "#3b82f6", marginBottom: 8 }}>{stats.orders}</div>
+              <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 500 }}>All-time orders placed</div>
+            </div>
+
+            {/* Completed Orders - Success State */}
+            <div style={{
+              background: "linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)",
+              padding: 28,
+              borderRadius: 14,
+              border: "2px solid #10b981",
+              boxShadow: "0 4px 12px rgba(16, 185, 129, 0.15)"
+            }}>
+              <div style={{ fontSize: 13, color: "#047857", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>✓ Completed</div>
+              <div style={{ fontSize: 36, fontWeight: 800, color: "#059669", marginBottom: 8 }}>{chartData.statusCounts.COMPLETED}</div>
+              <div style={{ fontSize: 12, color: "#047857", fontWeight: 500 }}>Successfully completed</div>
+            </div>
+
+            {/* Pending Orders - Warning State */}
+            <div style={{
+              background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
+              padding: 28,
+              borderRadius: 14,
+              border: "2px solid #f59e0b",
+              boxShadow: "0 4px 12px rgba(245, 158, 11, 0.15)"
+            }}>
+              <div style={{ fontSize: 13, color: "#92400e", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>⏳ Pending</div>
+              <div style={{ fontSize: 36, fontWeight: 800, color: "#d97706", marginBottom: 8 }}>{chartData.statusCounts.PENDING}</div>
+              <div style={{ fontSize: 12, color: "#92400e", fontWeight: 500 }}>Awaiting confirmation</div>
+            </div>
+
+            {/* Accepted Orders - Active State */}
+            <div style={{
+              background: "linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%)",
+              padding: 28,
+              borderRadius: 14,
+              border: "2px solid #3b82f6",
+              boxShadow: "0 4px 12px rgba(59, 130, 246, 0.15)"
+            }}>
+              <div style={{ fontSize: 13, color: "#1e40af", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>→ Accepted</div>
+              <div style={{ fontSize: 36, fontWeight: 800, color: "#2563eb", marginBottom: 8 }}>{chartData.statusCounts.ACCEPTED}</div>
+              <div style={{ fontSize: 12, color: "#1e40af", fontWeight: 500 }}>In preparation</div>
+            </div>
           </section>
 
           {/* Analytics Charts */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))", gap: 20, marginBottom: 32 }}>
             {/* Order Status Chart */}
-            <div style={{ background: "white", padding: 20, borderRadius: 8, border: "1px solid #e2e8f0" }}>
-              <h3 style={{ margin: "0 0 20px 0", fontSize: 16, fontWeight: 600, color: "#1e293b" }}>Order Status Distribution</h3>
+            <div style={{ background: "white", padding: 28, borderRadius: 14, border: "1px solid #e5e7eb", boxShadow: "0 4px 12px rgba(0,0,0,0.06)" }}>
+              <div style={{ marginBottom: 24 }}>
+                <h3 style={{ margin: "0 0 6px 0", fontSize: 18, fontWeight: 700, color: "#1f2937" }}>Order Status Overview</h3>
+                <p style={{ margin: 0, fontSize: 14, color: "#6b7280", fontWeight: 500 }}>Distribution of all orders by status</p>
+              </div>
               <div style={{ display: "flex", alignItems: "center", gap: 32, position: "relative" }}>
                 {/* Donut Chart */}
                 <div style={{ position: "relative", width: 140, height: 140, flexShrink: 0 }}>
@@ -328,20 +358,24 @@ export default function AdminDashboard() {
             </div>
 
             {/* Daily Orders Chart */}
-            <div style={{ background: "white", padding: 20, borderRadius: 8, border: "1px solid #e2e8f0" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#1e293b" }}>Orders</h3>
+            <div style={{ background: "white", padding: 28, borderRadius: 14, border: "1px solid #e5e7eb", boxShadow: "0 4px 12px rgba(0,0,0,0.06)" }}>
+              <div style={{ marginBottom: 24 }}>
+                <h3 style={{ margin: "0 0 6px 0", fontSize: 18, fontWeight: 700, color: "#1f2937" }}>Order Trends</h3>
+                <p style={{ margin: "0 0 16px 0", fontSize: 14, color: "#6b7280", fontWeight: 500 }}>Track order volume over time</p>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                <div></div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
                     onClick={() => handleFilterChange('daily')}
                     style={{
-                      padding: "6px 12px",
+                      padding: "10px 20px",
                       fontSize: 13,
-                      fontWeight: 500,
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 6,
-                      background: orderFilter === 'daily' ? "#2563eb" : "white",
-                      color: orderFilter === 'daily' ? "white" : "#64748b",
+                      fontWeight: 600,
+                      border: orderFilter === 'daily' ? "2px solid #3b82f6" : "1px solid #e5e7eb",
+                      borderRadius: 10,
+                      background: orderFilter === 'daily' ? "#eff6ff" : "white",
+                      color: orderFilter === 'daily' ? "#3b82f6" : "#6b7280",
                       cursor: "pointer",
                       transition: "all 0.2s"
                     }}
@@ -351,13 +385,13 @@ export default function AdminDashboard() {
                   <button
                     onClick={() => handleFilterChange('7days')}
                     style={{
-                      padding: "6px 12px",
+                      padding: "10px 20px",
                       fontSize: 13,
-                      fontWeight: 500,
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 6,
-                      background: orderFilter === '7days' ? "#2563eb" : "white",
-                      color: orderFilter === '7days' ? "white" : "#64748b",
+                      fontWeight: 600,
+                      border: orderFilter === '7days' ? "2px solid #3b82f6" : "1px solid #e5e7eb",
+                      borderRadius: 10,
+                      background: orderFilter === '7days' ? "#eff6ff" : "white",
+                      color: orderFilter === '7days' ? "#3b82f6" : "#6b7280",
                       cursor: "pointer",
                       transition: "all 0.2s"
                     }}
@@ -367,13 +401,13 @@ export default function AdminDashboard() {
                   <button
                     onClick={() => handleFilterChange('monthly')}
                     style={{
-                      padding: "6px 12px",
+                      padding: "10px 20px",
                       fontSize: 13,
-                      fontWeight: 500,
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 6,
-                      background: orderFilter === 'monthly' ? "#2563eb" : "white",
-                      color: orderFilter === 'monthly' ? "white" : "#64748b",
+                      fontWeight: 600,
+                      border: orderFilter === 'monthly' ? "2px solid #3b82f6" : "1px solid #e5e7eb",
+                      borderRadius: 10,
+                      background: orderFilter === 'monthly' ? "#eff6ff" : "white",
+                      color: orderFilter === 'monthly' ? "#3b82f6" : "#6b7280",
                       cursor: "pointer",
                       transition: "all 0.2s"
                     }}
@@ -381,6 +415,7 @@ export default function AdminDashboard() {
                     Monthly
                   </button>
                 </div>
+                <div></div>
               </div>
               <div style={{ display: "flex", alignItems: "flex-end", gap: orderFilter === 'monthly' ? 8 : 12, height: 220, justifyContent: "space-around", padding: "0 8px", marginTop: 20, position: "relative" }}>
                 {filteredOrders.map((period, idx) => {
@@ -475,15 +510,10 @@ export default function AdminDashboard() {
           </div>
 
           {/* Revenue Chart */}
-          <div style={{ background: "white", padding: 20, borderRadius: 8, border: "1px solid #e2e8f0" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#1e293b" }}>Revenue</h3>
-              <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981" }} />
-                  <span style={{ fontSize: 13, color: "#64748b" }}>Income</span>
-                </div>
-              </div>
+          <div style={{ background: "white", padding: 28, borderRadius: 14, border: "1px solid #e5e7eb", boxShadow: "0 4px 12px rgba(0,0,0,0.06)" }}>
+            <div style={{ marginBottom: 24 }}>
+              <h3 style={{ margin: "0 0 6px 0", fontSize: 18, fontWeight: 700, color: "#1f2937" }}>Revenue Performance</h3>
+              <p style={{ margin: 0, fontSize: 14, color: "#6b7280", fontWeight: 500 }}>Daily income tracking</p>
             </div>
             <div style={{ position: "relative", height: 200 }}>
               {chartData.dailyRevenue.length > 0 ? (
@@ -573,20 +603,22 @@ export default function AdminDashboard() {
                 </span>
               ))}
             </div>
-            <div style={{ marginTop: 20, padding: 16, background: "#f9fafb", borderRadius: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>Total Revenue</div>
-                <div style={{ fontSize: 24, fontWeight: 600, color: "#1e293b" }}>
+            <div style={{ marginTop: 24, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+              <div style={{ padding: 20, background: "#f8fafc", borderRadius: 12, border: "1px solid #e5e7eb" }}>
+                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>Total Revenue</div>
+                <div style={{ fontSize: 32, fontWeight: 800, color: "#10b981", marginBottom: 4 }}>
                   ₱{chartData.totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
+                <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 500 }}>All-time income</div>
               </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>Avg Order Value</div>
-                <div style={{ fontSize: 20, fontWeight: 600, color: "#1e293b" }}>
+              <div style={{ padding: 20, background: "#f8fafc", borderRadius: 12, border: "1px solid #e5e7eb" }}>
+                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>Avg Order Value</div>
+                <div style={{ fontSize: 32, fontWeight: 800, color: "#3b82f6", marginBottom: 4 }}>
                   ₱{chartData.statusCounts.COMPLETED > 0
                     ? (chartData.totalRevenue / chartData.statusCounts.COMPLETED).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                     : "0.00"}
                 </div>
+                <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 500 }}>Per completed order</div>
               </div>
             </div>
           </div>
@@ -600,14 +632,15 @@ export default function AdminDashboard() {
 function StatCard({ label, value, icon }: { label: string; value: number | string; icon?: string; gradient?: string }) {
   return (
     <div style={{
-      background: "white",
-      padding: 20,
-      borderRadius: 8,
-      minWidth: 180,
-      border: "1px solid #e2e8f0"
+      background: "#ffffff",
+      padding: 28,
+      borderRadius: 14,
+      minWidth: 200,
+      border: "1px solid #e5e7eb",
+      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.06)"
     }}>
-      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8, fontWeight: 500 }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 600, color: "#1e293b" }}>{value}</div>
+      <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</div>
+      <div style={{ fontSize: 32, fontWeight: 800, color: "#3b82f6" }}>{value}</div>
     </div>
   );
 }

@@ -1,69 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import {
+  getAllOrders,
+  createOrder,
+  getFoodItemsByIds,
+} from "@/lib/firebase-db";
+import { serializeOrder } from "@/lib/firebase";
 import { sendOrderConfirmationEmail, sendOrderPickupConfirmationEmail } from "@/lib/email";
+import { validateOrderInput } from "@/lib/validators";
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const archivedParam = searchParams.get('archived');
-    const statusParam = searchParams.get('status');
-    const dateFrom = searchParams.get('dateFrom');
-    const dateTo = searchParams.get('dateTo');
+    const archivedParam = searchParams.get("archived");
 
-    // Handle archived, status and date range parameters
-    let whereClause: any = {};
-
-    if (archivedParam === 'true') {
-      whereClause.archived = true;
-    } else if (archivedParam === 'false') {
-      whereClause.archived = false;
+    let archived: boolean | undefined;
+    if (archivedParam === "true") {
+      archived = true;
+    } else if (archivedParam === "false") {
+      archived = false;
     }
 
-    if (statusParam) {
-      whereClause.status = statusParam;
-    }
+    console.log("Fetching orders with archived param:", archivedParam);
 
-    if (dateFrom || dateTo) {
-      whereClause.createdAt = {};
-      if (dateFrom) {
-        const from = new Date(dateFrom);
-        if (!isNaN(from.getTime())) whereClause.createdAt.gte = from;
-      }
-      if (dateTo) {
-        const to = new Date(dateTo);
-        if (!isNaN(to.getTime())) {
-          // If only a date (YYYY-MM-DD) was provided, extend to end of day
-          if (/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
-            to.setHours(23, 59, 59, 999);
-          }
-          whereClause.createdAt.lte = to;
-        }
-      }
-      // If createdAt ended up empty, delete it
-      if (Object.keys(whereClause.createdAt).length === 0) delete whereClause.createdAt;
-    }
-    // If archivedParam is null, whereClause remains {} (fetch all)
+    const orders = await getAllOrders(archived);
 
-    console.log('Fetching orders with archived param:', archivedParam, 'where clause:', whereClause);
-
-    const orders = await prisma.order.findMany({
-      where: whereClause,
-      orderBy: { id: "desc" },
-      include: { items: true },
-    });
-
-    // Attach a stable frontend UID to each order for display/export purposes.
-    // We keep the underlying numeric `id` as the PK in the DB.
+    // Serialize Timestamps and attach a stable frontend UID to each order
     const mapped = orders.map((o) => ({
-      ...o,
-      uid: `ORD${String(o.id).padStart(6, '0')}`,
+      ...serializeOrder(o),
+      uid: `ORD${String(o.numericId || 0).padStart(6, "0")}`,
     }));
 
     console.log(`Found ${orders.length} orders`);
+    console.log(`📋 Order statuses:`, orders.map(o => `#${o.numericId}: ${o.status}`).join(", "));
+    const pendingOrders = mapped.filter(o => o.status === "PENDING");
+    console.log(`🔔 PENDING orders:`, pendingOrders.length, pendingOrders.map(o => ({ id: o.id, numericId: o.numericId, customer: o.customer, status: o.status })));
     return NextResponse.json(mapped);
   } catch (e) {
     console.error("Order fetch error:", e);
-    return NextResponse.json({ error: "failed to fetch orders" }, { status: 500 });
+    return NextResponse.json(
+      { error: "failed to fetch orders" },
+      { status: 500 }
+    );
   }
 }
 
@@ -75,28 +52,35 @@ export async function POST(req: NextRequest) {
       contactNumber?: string;
       email?: string;
       address?: string;
-      date?: string; // yyyy-mm-dd
-      time?: string; // HH:mm
-      items?: Array<{ foodId: number; name: string; quantity: number; unitPrice: number; notes?: string }>;
+      date?: string;
+      time?: string;
+      items?: Array<{ foodId: string; name: string; quantity: number; unitPrice: number; notes?: string }>;
       orderType?: 'DELIVERY' | 'PICKUP';
     };
+
+    // Validate input
+    const validation = validateOrderInput({ customer, contactNumber, email, address, items });
+    if (!validation.valid) {
+      return NextResponse.json({ error: validation.errors.join("; ") }, { status: 400 });
+    }
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "items required" }, { status: 400 });
     }
 
-    const total = items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0);
+    // Verify all food items exist
+    const foodItemIds = items.map(it => it.foodId);
+    const existingItems = await getFoodItemsByIds(foodItemIds);
+    const existingIds = new Set(existingItems.map(fi => fi.id));
+    const missingIds = foodItemIds.filter(id => !existingIds.has(id));
 
-    // Ensure each FoodItem exists; upsert by id with latest name/price
-    await Promise.all(
-      items.map((it) =>
-        prisma.foodItem.upsert({
-          where: { id: it.foodId },
-          update: { name: it.name, price: it.unitPrice },
-          create: { id: it.foodId, name: it.name, price: it.unitPrice },
-        })
-      )
-    );
+    if (missingIds.length > 0) {
+      return NextResponse.json({
+        error: `The following food items do not exist: ${missingIds.join(", ")}. Please check the menu.`
+      }, { status: 400 });
+    }
+
+    const total = items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0);
 
     let desiredAt: Date | null = null;
     try {
@@ -107,27 +91,21 @@ export async function POST(req: NextRequest) {
       }
     } catch (e) {}
 
-    const order = await prisma.order.create({
-      data: {
-        customer: customer ?? null,
-        contactNumber: contactNumber ?? null,
-        email: email ?? null,
-        address: address ?? null,
-        desiredAt: desiredAt,
-        orderType: (orderType === 'PICKUP' ? 'PICKUP' : 'DELIVERY') as any,
-        total,
-        items: {
-          create: items.map((it) => ({
-            foodId: it.foodId,
-            name: it.name,
-            quantity: it.quantity,
-            unitPrice: it.unitPrice,
-            lineTotal: it.quantity * it.unitPrice,
-            notes: it.notes ?? null,
-          })),
-        },
-      },
-      include: { items: true },
+    const order = await createOrder({
+      customer: customer ?? undefined,
+      contactNumber: contactNumber ?? undefined,
+      email: email ?? undefined,
+      address: address ?? undefined,
+      desiredAt,
+      orderType: orderType === 'PICKUP' ? 'PICKUP' : 'DELIVERY',
+      total,
+      items: items.map((it) => ({
+        foodId: it.foodId,
+        name: it.name,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+        notes: it.notes ?? undefined,
+      })),
     });
 
     // Send confirmation email if email is provided
@@ -136,7 +114,7 @@ export async function POST(req: NextRequest) {
         const common = {
           customerName: customer || "Guest",
           email: email,
-          orderId: order.id,
+          orderId: order.numericId || 0,
           items: items.map(it => ({
             name: it.name,
             quantity: it.quantity,
@@ -148,7 +126,7 @@ export async function POST(req: NextRequest) {
           date: date,
           time: time,
         };
-        const emailResult = orderType === 'PICKUP' 
+        const emailResult = orderType === 'PICKUP'
           ? await sendOrderPickupConfirmationEmail({
               ...common,
               address: 'Pick up at: Hostel Restaurant, 123 Hostel Ave, Barangay Central, City, Province',
@@ -157,16 +135,15 @@ export async function POST(req: NextRequest) {
               ...common,
               address: address || "N/A",
             });
-        
+
         if (!emailResult.success) {
-          console.error(`⚠️ Order #${order.id} created successfully, but email notification failed:`, emailResult.error);
+          console.error(`⚠️ Order #${order.numericId} created successfully, but email notification failed:`, emailResult.error);
         }
       } catch (emailError: any) {
-        console.error(`⚠️ Order #${order.id} created successfully, but email notification failed:`, emailError?.message || emailError);
-        // Don't fail the order creation if email fails
+        console.error(`⚠️ Order #${order.numericId} created successfully, but email notification failed:`, emailError?.message || emailError);
       }
     } else {
-      console.log(`ℹ️ Order #${order.id} created without email notification (no email provided)`);
+      console.log(`ℹ️ Order #${order.numericId} created without email notification (no email provided)`);
     }
 
     return NextResponse.json(order, { status: 201 });

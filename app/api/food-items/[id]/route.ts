@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import {
+  getFoodItemById,
+  updateFoodItem,
+  deleteFoodItem,
+  getFoodItemByCode,
+} from "@/lib/firebase-db";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id: idStr } = await params;
-    const id = parseInt(idStr);
-    const item = await prisma.foodItem.findUnique({ where: { id } });
+    const { id } = await params;
+    const item = await getFoodItemById(id);
     if (!item) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
@@ -18,15 +22,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id: idStr } = await params;
-    const id = parseInt(idStr);
+    const { id } = await params;
     const body = await req.json();
     const { name, description, price, category, code, img, available } = body;
 
     // Get current item to check if code is actually changing
-    const currentItem = await prisma.foodItem.findUnique({
-      where: { id },
-    });
+    const currentItem = await getFoodItemById(id);
 
     if (!currentItem) {
       return NextResponse.json({ error: "Food item not found" }, { status: 404 });
@@ -37,10 +38,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const newCode = code?.toLowerCase() || "";
 
     if (code !== undefined && code !== null && code !== "" && newCode !== currentCode) {
-      const existing = await prisma.foodItem.findUnique({
-        where: { code },
-      });
-      if (existing) {
+      const existing = await getFoodItemByCode(code);
+      if (existing && existing.id !== id) {
         return NextResponse.json({ error: "Code already exists" }, { status: 400 });
       }
     }
@@ -61,34 +60,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (img !== undefined) updateData.img = img || null;
     if (available !== undefined) updateData.available = available;
 
-    const item = await prisma.foodItem.update({
-      where: { id },
-      data: updateData,
-    });
+    const item = await updateFoodItem(id, updateData);
 
     return NextResponse.json(item);
   } catch (e: any) {
     console.error("Food item update error:", e);
-
-    // Handle Prisma unique constraint error
-    if (e.code === 'P2002') {
-      return NextResponse.json({ error: "Code already exists" }, { status: 400 });
-    }
-
-    // Handle record not found
-    if (e.code === 'P2025') {
-      return NextResponse.json({ error: "Food item not found" }, { status: 404 });
-    }
-
     return NextResponse.json({ error: e.message || "failed to update food item" }, { status: 500 });
   }
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id: idStr } = await params;
-    const id = parseInt(idStr);
-    await prisma.foodItem.delete({ where: { id } });
+    const { id } = await params;
+    await deleteFoodItem(id);
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("Food item delete error:", e);

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Sidebar from "../components/Sidebar";
 import AdminHeader from "../components/AdminHeader";
 import Swal from "sweetalert2";
+import { formatDate, formatDateOnly } from "@/lib/date-utils";
 
 type OrderItem = {
   id: number;
@@ -13,6 +14,8 @@ type OrderItem = {
   unitPrice: string;
   lineTotal: string;
   notes?: string;
+  img?: string | null;
+  foodId?: string;
 };
 
 type Order = {
@@ -68,6 +71,7 @@ export default function AdminOrdersPage() {
     { label: "Orders", href: "/admin/orders" },
     { label: "Food Menu", href: "/admin/food-menu" },
     { label: "Archive", href: "/admin/archive" },
+    { label: "Completed", href: "/admin/Completed" },
     { label: "Income", href: "/admin/Income" },
   ];
 
@@ -457,6 +461,7 @@ export default function AdminOrdersPage() {
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: 'Courier New', monospace; padding: 20px; max-width: 600px; margin: 0 auto; }
           .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 15px; }
+          .logo { max-width: 120px; height: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto; }
           .header h1 { font-size: 24px; margin-bottom: 5px; }
           .header p { font-size: 12px; color: #666; }
           .section { margin-bottom: 15px; }
@@ -480,8 +485,10 @@ export default function AdminOrdersPage() {
       </head>
       <body>
         <div class="header">
+          <img src="/img/NEMSU.png" alt="NEMSU Logo" class="logo" />
           <h1>🍽️ ORDER RECEIPT</h1>
           <p>Hotel Management System</p>
+          <p>North Eastern Mindanao State University</p>
         </div>
 
         <div class="section">
@@ -492,7 +499,7 @@ export default function AdminOrdersPage() {
           </div>
           <div class="info-row">
             <span class="info-label">Date:</span>
-            <span>${new Date(order.createdAt).toLocaleString()}</span>
+            <span>${formatDate(order.createdAt)}</span>
           </div>
           <div class="info-row">
             <span class="info-label">Status:</span>
@@ -598,11 +605,11 @@ export default function AdminOrdersPage() {
         `"${order.contactNumber || "N/A"}"`,
         `"${order.email || "N/A"}"`,
         `"${order.address || "N/A"}"`,
-        order.desiredAt ? `"${new Date(order.desiredAt).toLocaleDateString()}"` : "N/A",
-        order.desiredAt ? `"${new Date(order.desiredAt).toLocaleTimeString()}"` : "N/A",
+        order.desiredAt ? `"${formatDateOnly(order.desiredAt)}"` : "N/A",
+        order.desiredAt ? `"${formatDate(order.desiredAt).split(", ")[1] || formatDate(order.desiredAt)}"` : "N/A",
         order.status,
         order.total,
-        `"${new Date(order.createdAt).toLocaleString()}"`,
+        `"${formatDate(order.createdAt)}"`,
         `"${itemsList}"`
       ];
     });
@@ -834,29 +841,106 @@ export default function AdminOrdersPage() {
 
           {!loading && orders.length > 0 && (
             <>
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, background: "#fff", borderRadius: 8, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+              <div style={{ overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: 8 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, background: "#fff" }}>
                   <thead>
-                    <tr style={{ textAlign: "left", borderBottom: "2px solid #e5e7eb", background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "#fff" }}>
-                      <th style={{ padding: "12px 10px", fontWeight: 600 }}>ID</th>
-                      <th style={{ padding: "12px 10px", fontWeight: 600 }}>Customer</th>
-                      <th style={{ padding: "12px 10px", fontWeight: 600 }}>Contact</th>
-                      <th style={{ padding: "12px 10px", fontWeight: 600 }}>Email</th>
-                      <th style={{ padding: "12px 10px", fontWeight: 600 }}>Total</th>
-                      <th style={{ padding: "12px 10px", fontWeight: 600 }}>Status</th>
-                      <th style={{ padding: "12px 10px", fontWeight: 600 }}>Created</th>
-                      <th style={{ padding: "12px 10px", fontWeight: 600 }}>Actions</th>
+                    <tr style={{ textAlign: "left", background: "#f8fafc", borderBottom: "2px solid #e5e7eb" }}>
+                      <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>ID</th>
+                      <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Customer</th>
+                      <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Contact</th>
+                      <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Email</th>
+                      <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb", minWidth: 200 }}>Order Items</th>
+                      <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Total</th>
+                      <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Status</th>
+                      <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Created</th>
+                      <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151" }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {currentOrders.map((order, index) => (
-                    <tr key={order.id} style={{ borderBottom: "1px solid #f3f4f6", background: index % 2 === 0 ? "#fff" : "#f9fafb", transition: "background 0.2s" }} onMouseEnter={(e) => e.currentTarget.style.background = "#f0f9ff"} onMouseLeave={(e) => e.currentTarget.style.background = index % 2 === 0 ? "#fff" : "#f9fafb"}>
-                      <td style={{ padding: "12px 10px", fontWeight: 600, color: "#667eea" }}>{order.uid || order.id}</td>
-                      <td style={{ padding: "12px 10px" }}>{order.customer || "Guest"}</td>
-                      <td style={{ padding: "12px 10px" }}>{order.contactNumber || "—"}</td>
-                      <td style={{ padding: "12px 10px", fontSize: 13 }}>{order.email || "—"}</td>
-                      <td style={{ padding: "12px 10px", fontWeight: 600, color: "#10b981" }}>₱{order.total}</td>
-                      <td style={{ padding: "12px 10px" }}>
+                    <tr key={order.id} style={{ borderBottom: "1px solid #e5e7eb", background: index % 2 === 0 ? "#fff" : "#f9fafb", transition: "background 0.2s" }} onMouseEnter={(e) => e.currentTarget.style.background = "#eff6ff"} onMouseLeave={(e) => e.currentTarget.style.background = index % 2 === 0 ? "#fff" : "#f9fafb"}>
+                      <td style={{ padding: "12px", fontWeight: 600, color: "#3b82f6", borderRight: "1px solid #e5e7eb" }}>{order.uid || order.id}</td>
+                      <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>{order.customer || "Guest"}</td>
+                      <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>{order.contactNumber || "—"}</td>
+                      <td style={{ padding: "12px", fontSize: 13, borderRight: "1px solid #e5e7eb" }}>{order.email || "—"}</td>
+                      <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {order.items && order.items.length > 0 ? (
+                            order.items.slice(0, 3).map((item, i) => (
+                              <div key={i} style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                padding: "6px 8px",
+                                background: "#f8fafc",
+                                borderRadius: 6,
+                                border: "1px solid #e5e7eb",
+                              }}>
+                                {item.img ? (
+                                  <img
+                                    src={item.img}
+                                    alt={item.name}
+                                    style={{
+                                      width: 36,
+                                      height: 36,
+                                      borderRadius: 4,
+                                      objectFit: "cover",
+                                      border: "1px solid #e5e7eb",
+                                      flexShrink: 0,
+                                    }}
+                                  />
+                                ) : (
+                                  <div style={{
+                                    width: 36,
+                                    height: 36,
+                                    borderRadius: 4,
+                                    background: "#e5e7eb",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: 14,
+                                    flexShrink: 0,
+                                  }}>
+                                    🍽️
+                                  </div>
+                                )}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    color: "#1e293b",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}>
+                                    {item.name}
+                                  </div>
+                                  <div style={{ fontSize: 11, color: "#64748b" }}>
+                                    x{item.quantity} • ₱{parseFloat(item.unitPrice).toFixed(2)}
+                                  </div>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <span style={{ color: "#9ca3af", fontSize: 12 }}>No items</span>
+                          )}
+                          {order.items && order.items.length > 3 && (
+                            <div style={{
+                              fontSize: 11,
+                              color: "#667eea",
+                              fontWeight: 600,
+                              padding: "4px 8px",
+                              background: "#eef2ff",
+                              borderRadius: 4,
+                              textAlign: "center",
+                            }}>
+                              +{order.items.length - 3} more item{order.items.length - 3 > 1 ? "s" : ""}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td style={{ padding: "12px", fontWeight: 600, color: "#10b981", borderRight: "1px solid #e5e7eb" }}>₱{order.total}</td>
+                      <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>
                         <span style={{
                           background: order.status === "PENDING" ? "#fef3c7" : order.status === "ACCEPTED" ? "#dbeafe" : order.status === "COMPLETED" ? "#d1fae5" : "#fee2e2",
                           color: order.status === "PENDING" ? "#92400e" : order.status === "ACCEPTED" ? "#1e40af" : order.status === "COMPLETED" ? "#065f46" : "#991b1b",
@@ -870,10 +954,10 @@ export default function AdminOrdersPage() {
                           {order.status}
                         </span>
                       </td>
-                      <td style={{ padding: "12px 10px", fontSize: 12, color: "#6b7280" }}>{new Date(order.createdAt).toLocaleString()}</td>
-                      <td style={{ padding: "12px 10px" }}>
+                      <td style={{ padding: "12px", fontSize: 12, color: "#6b7280", borderRight: "1px solid #e5e7eb" }}>{formatDate(order.createdAt)}</td>
+                      <td style={{ padding: "12px" }}>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button onClick={() => setSelectedOrder(order)} style={{ background: "#0070f3", color: "#fff", border: "none", padding: "6px 10px", borderRadius: 4, cursor: "pointer", fontSize: 12 }}>
+                        <button onClick={() => setSelectedOrder(order)} style={{ background: "#3b82f6", color: "#fff", border: "none", padding: "6px 10px", borderRadius: 4, cursor: "pointer", fontSize: 12 }}>
                           View
                         </button>
                         {(order.status === "ACCEPTED" || order.status === "COMPLETED") && (
@@ -1063,7 +1147,7 @@ export default function AdminOrdersPage() {
                 </div>
                 <div>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>Desired Delivery/Pickup</div>
-                  <div>{selectedOrder.desiredAt ? new Date(selectedOrder.desiredAt).toLocaleString() : "—"}</div>
+                  <div>{selectedOrder.desiredAt ? formatDate(selectedOrder.desiredAt) : "—"}</div>
                 </div>
                 {selectedOrder.orderType && (
                   <div>

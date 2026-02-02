@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Sidebar from "../components/Sidebar";
 import AdminHeader from "../components/AdminHeader";
 import Swal from "sweetalert2";
+import { formatDate } from "@/lib/date-utils";
 
 type OrderItem = {
   id: number;
@@ -44,6 +45,7 @@ export default function ArchivePage() {
     { label: "Orders", href: "/admin/orders" },
     { label: "Food Menu", href: "/admin/food-menu" },
     { label: "Archive", href: "/admin/archive" },
+    { label: "Completed", href: "/admin/Completed" },
     { label: "Income", href: "/admin/Income" },
   ];
 
@@ -202,8 +204,8 @@ export default function ArchivePage() {
         `"${order.address || "N/A"}"`,
         order.status,
         order.total,
-        `"${new Date(order.createdAt).toLocaleString()}"`,
-        order.archivedAt ? `"${new Date(order.archivedAt).toLocaleString()}"` : "N/A",
+        `"${formatDate(order.createdAt)}"`,
+        order.archivedAt ? `"${formatDate(order.archivedAt)}"` : "N/A",
         `"${itemsList}"`
       ];
     });
@@ -402,27 +404,27 @@ export default function ArchivePage() {
 
           {!loading && filteredOrders.length > 0 && (
             <>
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, background: "#fff", borderRadius: 8, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+              <div style={{ overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: 8 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, background: "#fff" }}>
                   <thead>
-                    <tr style={{ textAlign: "left", borderBottom: "2px solid #e5e7eb", background: "linear-gradient(135deg, #6b7280 0%, #4b5563 100%)", color: "#fff" }}>
-                      <th style={{ padding: "12px 10px", fontWeight: 600 }}>ID</th>
-                      <th style={{ padding: "12px 10px", fontWeight: 600 }}>Customer</th>
-                      <th style={{ padding: "12px 10px", fontWeight: 600 }}>Contact</th>
-                      <th style={{ padding: "12px 10px", fontWeight: 600 }}>Total</th>
-                      <th style={{ padding: "12px 10px", fontWeight: 600 }}>Status</th>
-                      <th style={{ padding: "12px 10px", fontWeight: 600 }}>Archived</th>
-                      <th style={{ padding: "12px 10px", fontWeight: 600 }}>Actions</th>
+                    <tr style={{ textAlign: "left", background: "#f8fafc", borderBottom: "2px solid #e5e7eb" }}>
+                      <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>ID</th>
+                      <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Customer</th>
+                      <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Contact</th>
+                      <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Total</th>
+                      <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Status</th>
+                      <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Archived</th>
+                      <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151" }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {currentOrders.map((order, index) => (
-                    <tr key={order.id} style={{ borderBottom: "1px solid #f3f4f6", background: index % 2 === 0 ? "#fff" : "#f9fafb", transition: "background 0.2s" }} onMouseEnter={(e) => e.currentTarget.style.background = "#f0f9ff"} onMouseLeave={(e) => e.currentTarget.style.background = index % 2 === 0 ? "#fff" : "#f9fafb"}>
-                      <td style={{ padding: "12px 10px", fontWeight: 600, color: "#6b7280" }}>{order.uid || order.id}</td>
-                      <td style={{ padding: "12px 10px" }}>{order.customer || "Guest"}</td>
-                      <td style={{ padding: "12px 10px" }}>{order.contactNumber || "—"}</td>
-                      <td style={{ padding: "12px 10px", fontWeight: 600, color: "#6b7280" }}>₱{order.total}</td>
-                      <td style={{ padding: "12px 10px" }}>
+                    <tr key={order.id} style={{ borderBottom: "1px solid #e5e7eb", background: index % 2 === 0 ? "#fff" : "#f9fafb", transition: "background 0.2s" }} onMouseEnter={(e) => e.currentTarget.style.background = "#eff6ff"} onMouseLeave={(e) => e.currentTarget.style.background = index % 2 === 0 ? "#fff" : "#f9fafb"}>
+                      <td style={{ padding: "12px", fontWeight: 600, color: "#6b7280", borderRight: "1px solid #e5e7eb" }}>{order.uid || order.id}</td>
+                      <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>{order.customer || "Guest"}</td>
+                      <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>{order.contactNumber || "—"}</td>
+                      <td style={{ padding: "12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>₱{order.total}</td>
+                      <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>
                         <span style={{
                           background: order.status === "COMPLETED" ? "#d1fae5" : "#fee2e2",
                           color: order.status === "COMPLETED" ? "#065f46" : "#991b1b",
@@ -436,12 +438,12 @@ export default function ArchivePage() {
                           {order.status}
                         </span>
                       </td>
-                      <td style={{ padding: "12px 10px", fontSize: 12, color: "#6b7280" }}>
-                        {order.archivedAt ? new Date(order.archivedAt).toLocaleString() : "—"}
+                      <td style={{ padding: "12px", fontSize: 12, color: "#6b7280", borderRight: "1px solid #e5e7eb" }}>
+                        {order.archivedAt ? formatDate(order.archivedAt) : "—"}
                       </td>
-                      <td style={{ padding: "12px 10px" }}>
+                      <td style={{ padding: "12px" }}>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button onClick={() => setSelectedOrder(order)} style={{ background: "#6b7280", color: "#fff", border: "none", padding: "6px 10px", borderRadius: 4, cursor: "pointer", fontSize: 12 }}>
+                        <button onClick={() => setSelectedOrder(order)} style={{ background: "#3b82f6", color: "#fff", border: "none", padding: "6px 10px", borderRadius: 4, cursor: "pointer", fontSize: 12 }}>
                           View
                         </button>
                         <button
@@ -587,7 +589,7 @@ export default function ArchivePage() {
                 </div>
                 <div>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>Archived At</div>
-                  <div>{selectedOrder.archivedAt ? new Date(selectedOrder.archivedAt).toLocaleString() : "—"}</div>
+                  <div>{selectedOrder.archivedAt ? formatDate(selectedOrder.archivedAt) : "—"}</div>
                 </div>
               </div>
             </div>
