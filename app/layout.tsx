@@ -13,8 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Hostel - Culinary Restaurant & Cafe",
-  description: "Welcome to Hostel, a premium dining destination offering world-class cuisine, ambiance, and hospitality.",
+  title: "Hostel Kitchen - NEMSU Lianga Campus",
+  description: "Fresh & Delicious Filipino Cuisine at NEMSU - Lianga Campus. Order authentic home-cooked meals, snacks, desserts and refreshing drinks.",
+  icons: {
+    icon: "/img/BSHM LOGO.jpg",
+    shortcut: "/img/BSHM LOGO.jpg",
+    apple: "/img/BSHM LOGO.jpg",
+  },
 };
 
 export default function RootLayout({
@@ -23,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

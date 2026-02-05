@@ -15,12 +15,49 @@
   }
 }
 
+/* Base Styles */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   background: linear-gradient(180deg, rgba(250,250,250,1) 0%, rgba(245,245,245,1) 100%);
   color: var(--foreground);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Prevent horizontal scroll on mobile */
+#__next,
+main {
+  overflow-x: hidden;
+}
+
+/* Improve touch targets on mobile */
+@media (max-width: 640px) {
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    min-height: 44px;
+  }
+}
+
+/* Safe area padding for notched devices */
+@supports (padding: max(0px)) {
+  .safe-area-inset {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
 }
 
 /* Reusable UI tokens */
@@ -510,6 +547,40 @@ body {
   animation: float-up 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
+/* Floating food icons animation */
+@keyframes float-gentle {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-15px) rotate(5deg);
+  }
+}
+
+.animate-float {
+  animation: float-gentle 6s ease-in-out infinite;
+}
+
+/* Steam/aroma animation */
+@keyframes steam-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scaleY(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: translateY(-10px) scaleY(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-20px) scaleY(1.2);
+  }
+}
+
+.animate-steam {
+  animation: steam-rise 3s ease-in-out infinite;
+}
+
 /* Gradient Border Animation */
 @keyframes gradient-rotate {
   0% {
@@ -544,5 +615,183 @@ body {
 @media (prefers-color-scheme: dark) {
   .gradient-border::before {
     background: #09090b;
+  }
+}
+
+/* ============================================
+   Mobile-First Responsive Enhancements
+   ============================================ */
+
+/* Mobile Menu Styles */
+.mobile-menu-enter {
+  transform: translateX(100%);
+}
+
+.mobile-menu-enter-active {
+  transform: translateX(0);
+  transition: transform 300ms ease-out;
+}
+
+.mobile-menu-exit {
+  transform: translateX(0);
+}
+
+.mobile-menu-exit-active {
+  transform: translateX(100%);
+  transition: transform 300ms ease-in;
+}
+
+/* Improved touch interactions */
+@media (hover: none) and (pointer: coarse) {
+  .shadow-button:active {
+    transform: scale(0.97);
+    box-shadow: 0px 4px 0px rgba(249, 115, 22, 0.3),
+                0 5px 15px rgba(249, 115, 22, 0.15);
+  }
+
+  .hover\:scale-105:active {
+    transform: scale(0.98);
+  }
+
+  .hover\:scale-110:active {
+    transform: scale(1.05);
+  }
+}
+
+/* Hero section mobile adjustments */
+@media (max-width: 640px) {
+  .hero-text-gradient {
+    background-size: 150% auto;
+  }
+
+  .animate-slide-up {
+    animation-duration: 0.8s;
+  }
+
+  .animate-fade-in {
+    animation-duration: 0.6s;
+  }
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-pulse {
+    animation: none;
+  }
+
+  .animate-bounce-slow {
+    animation: none;
+  }
+}
+
+/* Better scrollbar for webkit browsers */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
+
+@media (prefers-color-scheme: dark) {
+  ::-webkit-scrollbar-track {
+    background: #1a1a1a;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #4a4a4a;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #5a5a5a;
+  }
+}
+
+/* Hide scrollbar on mobile for cleaner look */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+}
+
+/* Utility class to hide scrollbar completely */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
+
+/* Focus styles for accessibility */
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* Mobile landscape orientation fixes */
+@media (max-height: 500px) and (orientation: landscape) {
+  .min-h-screen {
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+  }
+}
+
+/* Loading skeleton animation */
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 25%,
+    #e0e0e0 50%,
+    #f0f0f0 75%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+}
+
+@media (prefers-color-scheme: dark) {
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      #2a2a2a 25%,
+      #3a3a3a 50%,
+      #2a2a2a 75%
+    );
+    background-size: 400% 100%;
   }
 }

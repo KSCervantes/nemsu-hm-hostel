@@ -109,9 +109,10 @@ export default function FoodMenu() {
       const menuSection = menuSectionRef.current;
       const menuSectionRect = menuSection.getBoundingClientRect();
       const navHeight = navRef.current.offsetHeight;
+      const headerHeight = 72; // Account for main site header
 
       // Check if menu section is in view and hasn't scrolled past
-      const isInView = menuSectionRect.top <= 0 && menuSectionRect.bottom > navHeight;
+      const isInView = menuSectionRect.top <= headerHeight && menuSectionRect.bottom > navHeight + headerHeight;
 
       setIsNavSticky(isInView);
     };
@@ -133,9 +134,10 @@ export default function FoodMenu() {
         'drinks': 'drinks',
       };
 
-      // Get the nav height to offset the detection
+      // Get the nav height to offset the detection + header height
       const navHeight = navRef.current?.offsetHeight || 80;
-      const detectionOffset = navHeight + 150; // Detection point below the sticky nav
+      const headerHeight = 72; // Main site header
+      const detectionOffset = navHeight + headerHeight + 100; // Detection point below the sticky nav
 
       let currentCategory: "main" | "snacks" | "desserts" | "drinks" = 'main';
       let closestDistance = Infinity;
@@ -278,19 +280,19 @@ export default function FoodMenu() {
   }
 
   return (
-    <section id="menu" className="py-16 px-6 bg-white dark:bg-black dot-grid-background" ref={menuSectionRef}>
+    <section id="menu" className="py-12 sm:py-16 px-4 sm:px-6 bg-white dark:bg-black dot-grid-background" ref={menuSectionRef}>
       <div className="max-w-7xl mx-auto relative z-10">
         {/* Navigation Header */}
         <div
           ref={navRef}
-          className={`mb-12 pb-8 border-b border-zinc-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl rounded-lg p-4 shadow-xl transition-all duration-300 ${
-            isNavSticky ? 'fixed top-0 left-0 right-0 z-50 rounded-none shadow-2xl border-b-orange-500/20 bg-white dark:bg-zinc-900 py-4 w-full' : ''
+          className={`mb-8 sm:mb-12 border-b border-zinc-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl rounded-lg p-4 sm:p-5 md:p-6 shadow-xl transition-all duration-300 ${
+            isNavSticky ? 'fixed top-14 sm:top-16 md:top-[72px] left-0 right-0 z-40 rounded-none shadow-2xl border-b border-orange-500/20 bg-white/98 dark:bg-zinc-900/98 py-3 sm:py-4 w-full' : ''
           }`}
         >
-          <div className={`${isNavSticky ? 'max-w-7xl mx-auto px-6 pl-40' : ''} flex items-center gap-6 pointer-events-auto`}>
+          <div className={`${isNavSticky ? 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8' : ''} flex flex-col sm:flex-row items-stretch sm:items-center gap-4 sm:gap-8 md:gap-10 pointer-events-auto`}>
             {/* Search Input */}
-            <div className="relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="relative w-full sm:w-auto">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <input
@@ -298,12 +300,12 @@ export default function FoodMenu() {
                 placeholder="Search dishes..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="pl-10 pr-4 py-2 rounded-full border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-orange-300 shadow-sm"
+                className="w-full sm:w-48 md:w-64 pl-9 sm:pl-10 pr-4 py-2.5 sm:py-2 rounded-full border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent shadow-sm transition-all"
               />
             </div>
 
             {/* Category Links */}
-            <div className="flex gap-6 items-center overflow-x-auto pb-2 ml-4 pointer-events-auto">
+            <div className="flex gap-2 sm:gap-3 md:gap-4 lg:gap-6 items-center justify-center sm:justify-start overflow-x-auto scrollbar-hide py-1 sm:py-0 pointer-events-auto">
               <a
                 href="#main-dishes"
                 onClick={(e) => {
@@ -312,14 +314,15 @@ export default function FoodMenu() {
                   const element = document.getElementById('main-dishes');
                   if (element) {
                     const navHeight = navRef.current?.offsetHeight || 0;
-                    const offset = element.getBoundingClientRect().top + window.scrollY - navHeight - 20;
+                    const headerHeight = 72; // Main site header
+                    const offset = element.getBoundingClientRect().top + window.scrollY - navHeight - headerHeight - 20;
                     window.scrollTo({ top: offset, behavior: 'smooth' });
                   }
                 }}
-                className={`font-semibold whitespace-nowrap transition-all duration-300 pb-1 border-b-2 cursor-pointer ${
+                className={`text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-300 py-2.5 px-4 sm:px-5 md:px-6 rounded-full cursor-pointer ${
                   activeCategory === 'main'
-                    ? 'text-orange-600 dark:text-orange-500 border-orange-600 dark:border-orange-500'
-                    : 'text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white border-transparent hover:border-orange-300'
+                    ? 'bg-orange-500 text-white shadow-md'
+                    : 'text-zinc-700 dark:text-zinc-300 hover:bg-orange-100 dark:hover:bg-orange-900/30 hover:text-orange-600 dark:hover:text-orange-400'
                 }`}
               >
                 Main Dishes
@@ -332,14 +335,15 @@ export default function FoodMenu() {
                   const element = document.getElementById('snacks');
                   if (element) {
                     const navHeight = navRef.current?.offsetHeight || 0;
-                    const offset = element.getBoundingClientRect().top + window.scrollY - navHeight - 20;
+                    const headerHeight = 72; // Main site header
+                    const offset = element.getBoundingClientRect().top + window.scrollY - navHeight - headerHeight - 20;
                     window.scrollTo({ top: offset, behavior: 'smooth' });
                   }
                 }}
-                className={`font-semibold whitespace-nowrap transition-all duration-300 pb-1 border-b-2 cursor-pointer ${
+                className={`text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-300 py-2.5 px-4 sm:px-5 md:px-6 rounded-full cursor-pointer ${
                   activeCategory === 'snacks'
-                    ? 'text-orange-600 dark:text-orange-500 border-orange-600 dark:border-orange-500'
-                    : 'text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white border-transparent hover:border-orange-300'
+                    ? 'bg-orange-500 text-white shadow-md'
+                    : 'text-zinc-700 dark:text-zinc-300 hover:bg-orange-100 dark:hover:bg-orange-900/30 hover:text-orange-600 dark:hover:text-orange-400'
                 }`}
               >
                 Snacks
@@ -352,14 +356,15 @@ export default function FoodMenu() {
                   const element = document.getElementById('desserts');
                   if (element) {
                     const navHeight = navRef.current?.offsetHeight || 0;
-                    const offset = element.getBoundingClientRect().top + window.scrollY - navHeight - 20;
+                    const headerHeight = 72; // Main site header
+                    const offset = element.getBoundingClientRect().top + window.scrollY - navHeight - headerHeight - 20;
                     window.scrollTo({ top: offset, behavior: 'smooth' });
                   }
                 }}
-                className={`font-semibold whitespace-nowrap transition-all duration-300 pb-1 border-b-2 cursor-pointer ${
+                className={`text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-300 py-2.5 px-4 sm:px-5 md:px-6 rounded-full cursor-pointer ${
                   activeCategory === 'desserts'
-                    ? 'text-orange-600 dark:text-orange-500 border-orange-600 dark:border-orange-500'
-                    : 'text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white border-transparent hover:border-orange-300'
+                    ? 'bg-orange-500 text-white shadow-md'
+                    : 'text-zinc-700 dark:text-zinc-300 hover:bg-orange-100 dark:hover:bg-orange-900/30 hover:text-orange-600 dark:hover:text-orange-400'
                 }`}
               >
                 Desserts
@@ -372,14 +377,15 @@ export default function FoodMenu() {
                   const element = document.getElementById('drinks');
                   if (element) {
                     const navHeight = navRef.current?.offsetHeight || 0;
-                    const offset = element.getBoundingClientRect().top + window.scrollY - navHeight - 20;
+                    const headerHeight = 72; // Main site header
+                    const offset = element.getBoundingClientRect().top + window.scrollY - navHeight - headerHeight - 20;
                     window.scrollTo({ top: offset, behavior: 'smooth' });
                   }
                 }}
-                className={`font-semibold whitespace-nowrap transition-all duration-300 pb-1 border-b-2 cursor-pointer ${
+                className={`text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-300 py-2.5 px-4 sm:px-5 md:px-6 rounded-full cursor-pointer ${
                   activeCategory === 'drinks'
-                    ? 'text-orange-600 dark:text-orange-500 border-orange-600 dark:border-orange-500'
-                    : 'text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white border-transparent hover:border-orange-300'
+                    ? 'bg-orange-500 text-white shadow-md'
+                    : 'text-zinc-700 dark:text-zinc-300 hover:bg-orange-100 dark:hover:bg-orange-900/30 hover:text-orange-600 dark:hover:text-orange-400'
                 }`}
               >
                 Drinks
