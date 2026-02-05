@@ -5,7 +5,7 @@ import Swal from "sweetalert2";
 import { formatDate } from "@/lib/date-utils";
 
 type MenuItem = {
-  id: number;
+  id: string;
   name: string;
   price: number;
   description: string;
@@ -16,7 +16,7 @@ type MenuItem = {
 };
 
 type OrderItem = {
-  id: number;
+  id: string;
   name: string;
   price: number;
   quantity: number;
@@ -200,55 +200,59 @@ export default function FoodMenu() {
   const renderCategory = (categoryName: string, categoryKey: "main" | "snacks" | "desserts" | "drinks", categoryId: string) => (
     <div id={categoryId} className="relative z-10" style={{ scrollMarginTop: '150px' }}>
       <h3 className="text-2xl font-bold text-amber-900 dark:text-amber-600 mb-6 pb-3 border-b-4 border-amber-700 dark:border-amber-500 inline-block drop-shadow-sm">{categoryName}</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 mt-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
         {filteredMenu.filter((item) => item.category === categoryKey).map((item) => (
           <article
             key={item.id}
-            className={`group bg-white dark:bg-zinc-800 rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-700 shadow-lg hover:shadow-2xl transition-all transform hover:-translate-y-2 duration-300 flex flex-col ${
-              !item.available ? 'opacity-60 grayscale' : 'hover:border-purple-300 dark:hover:border-purple-600'
+            className={`group bg-white dark:bg-zinc-800 rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-700 shadow-lg hover:shadow-2xl transition-all transform hover:-translate-y-1 duration-300 flex flex-row h-48 ${
+              !item.available ? 'opacity-60 grayscale' : 'hover:border-orange-300 dark:hover:border-orange-600'
             }`}
           >
-            <div className="relative w-full h-56 shrink-0 overflow-hidden">
+            <div className="relative w-40 shrink-0 overflow-hidden">
               <img src={item.img} alt={item.name} className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-500" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/0 opacity-80 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="absolute inset-0 bg-gradient-to-r from-black/0 to-black/20 opacity-80 group-hover:opacity-100 transition-opacity duration-300" />
               {!item.available && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/60">
-                  <span className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold text-lg shadow-lg">
-                    Not Available
+                  <span className="bg-red-600 text-white px-2 py-1 rounded-lg font-bold text-sm shadow-lg">
+                    N/A
                   </span>
                 </div>
               )}
             </div>
 
-            <div className="p-4 grow text-zinc-900 dark:text-zinc-100 flex flex-col">
-              <h3 className={`text-lg font-semibold mb-2 line-clamp-2 text-black dark:text-white ${
-                !item.available ? 'line-through' : ''
-              }`}>{item.name}</h3>
-              <p className="text-sm text-zinc-700 dark:text-zinc-300 line-clamp-2 mb-3 grow">{item.description}</p>
-              <div className="flex items-center justify-between mb-3">
-                <span className={`inline-flex items-center gap-2 bg-purple-50 text-purple-700 px-3 py-1 rounded-full font-bold ${
+            <div className="p-4 grow text-zinc-900 dark:text-zinc-100 flex flex-col justify-between min-w-0">
+              <div>
+                <h3 className={`text-base font-semibold mb-1 line-clamp-2 text-black dark:text-white ${
                   !item.available ? 'line-through' : ''
-                }`}>₱{item.price}</span>
-                <span className="text-purple-600 font-bold text-sm">{item.code}</span>
+                }`}>{item.name}</h3>
+                <p className="text-xs text-zinc-700 dark:text-zinc-300 line-clamp-2 mb-2">{item.description}</p>
               </div>
-              <button
-                onClick={() => {
-                  if (!item.available) return;
-                  lastActiveRef.current = document.activeElement as HTMLElement | null;
-                  setSelected(item);
-                }}
-                disabled={!item.available}
-                className={`w-full font-bold py-2 px-4 rounded-lg shadow-md flex items-center justify-center gap-2 relative overflow-hidden transition-all duration-200 ${
-                  !item.available
-                    ? 'bg-gray-400 cursor-not-allowed text-gray-200'
-                    : 'bg-purple-600 text-white hover:shadow-lg hover:bg-purple-700 transform hover:-translate-y-0.5 group-hover:shadow-purple-500/50'
-                }`}
-              >
-                <svg className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-                </svg>
-                Buy Now
-              </button>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`inline-flex items-center gap-1 bg-orange-50 text-orange-700 px-2 py-0.5 rounded-full font-bold text-sm ${
+                    !item.available ? 'line-through' : ''
+                  }`}>₱{item.price}</span>
+                  <span className="text-orange-600 font-bold text-xs">{item.code}</span>
+                </div>
+                <button
+                  onClick={() => {
+                    if (!item.available) return;
+                    lastActiveRef.current = document.activeElement as HTMLElement | null;
+                    setSelected(item);
+                  }}
+                  disabled={!item.available}
+                  className={`w-full font-bold py-1.5 px-3 rounded-lg shadow-md flex items-center justify-center gap-2 relative overflow-hidden transition-all duration-200 text-sm ${
+                    !item.available
+                      ? 'bg-gray-400 cursor-not-allowed text-gray-200'
+                      : 'bg-orange-600 text-white hover:shadow-lg hover:bg-orange-700 transform hover:-translate-y-0.5 group-hover:shadow-orange-500/50'
+                  }`}
+                >
+                  <svg className="w-4 h-4 transition-transform duration-300 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                  </svg>
+                  Buy Now
+                </button>
+              </div>
             </div>
           </article>
         ))}
@@ -280,10 +284,10 @@ export default function FoodMenu() {
         <div
           ref={navRef}
           className={`mb-12 pb-8 border-b border-zinc-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl rounded-lg p-4 shadow-xl transition-all duration-300 ${
-            isNavSticky ? 'fixed top-0 left-0 right-0 z-40 rounded-none shadow-2xl border-b-purple-500/20 bg-white dark:bg-zinc-900 py-4 w-full' : ''
+            isNavSticky ? 'fixed top-0 left-0 right-0 z-50 rounded-none shadow-2xl border-b-orange-500/20 bg-white dark:bg-zinc-900 py-4 w-full' : ''
           }`}
         >
-          <div className={`${isNavSticky ? 'max-w-7xl mx-auto px-6' : ''} flex items-center gap-6 pointer-events-auto`}>
+          <div className={`${isNavSticky ? 'max-w-7xl mx-auto px-6 pl-40' : ''} flex items-center gap-6 pointer-events-auto`}>
             {/* Search Input */}
             <div className="relative">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -294,7 +298,7 @@ export default function FoodMenu() {
                 placeholder="Search dishes..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="pl-10 pr-4 py-2 rounded-full border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-purple-300 shadow-sm"
+                className="pl-10 pr-4 py-2 rounded-full border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-orange-300 shadow-sm"
               />
             </div>
 
@@ -314,8 +318,8 @@ export default function FoodMenu() {
                 }}
                 className={`font-semibold whitespace-nowrap transition-all duration-300 pb-1 border-b-2 cursor-pointer ${
                   activeCategory === 'main'
-                    ? 'text-purple-600 dark:text-purple-500 border-purple-600 dark:border-purple-500'
-                    : 'text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white border-transparent hover:border-purple-300'
+                    ? 'text-orange-600 dark:text-orange-500 border-orange-600 dark:border-orange-500'
+                    : 'text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white border-transparent hover:border-orange-300'
                 }`}
               >
                 Main Dishes
@@ -334,8 +338,8 @@ export default function FoodMenu() {
                 }}
                 className={`font-semibold whitespace-nowrap transition-all duration-300 pb-1 border-b-2 cursor-pointer ${
                   activeCategory === 'snacks'
-                    ? 'text-purple-600 dark:text-purple-500 border-purple-600 dark:border-purple-500'
-                    : 'text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white border-transparent hover:border-purple-300'
+                    ? 'text-orange-600 dark:text-orange-500 border-orange-600 dark:border-orange-500'
+                    : 'text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white border-transparent hover:border-orange-300'
                 }`}
               >
                 Snacks
@@ -354,8 +358,8 @@ export default function FoodMenu() {
                 }}
                 className={`font-semibold whitespace-nowrap transition-all duration-300 pb-1 border-b-2 cursor-pointer ${
                   activeCategory === 'desserts'
-                    ? 'text-purple-600 dark:text-purple-500 border-purple-600 dark:border-purple-500'
-                    : 'text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white border-transparent hover:border-purple-300'
+                    ? 'text-orange-600 dark:text-orange-500 border-orange-600 dark:border-orange-500'
+                    : 'text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white border-transparent hover:border-orange-300'
                 }`}
               >
                 Desserts
@@ -374,8 +378,8 @@ export default function FoodMenu() {
                 }}
                 className={`font-semibold whitespace-nowrap transition-all duration-300 pb-1 border-b-2 cursor-pointer ${
                   activeCategory === 'drinks'
-                    ? 'text-purple-600 dark:text-purple-500 border-purple-600 dark:border-purple-500'
-                    : 'text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white border-transparent hover:border-purple-300'
+                    ? 'text-orange-600 dark:text-orange-500 border-orange-600 dark:border-orange-500'
+                    : 'text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white border-transparent hover:border-orange-300'
                 }`}
               >
                 Drinks
@@ -470,7 +474,7 @@ export default function FoodMenu() {
                         }
                       });
                     }}
-                    className="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 flex items-center justify-center gap-2"
+                    className="flex-1 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 flex items-center justify-center gap-2"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -603,8 +607,7 @@ export default function FoodMenu() {
                         return;
                       }
 
-                      const id = Number(newItemId);
-                      const menuItem = menuItems.find((m) => m.id === id);
+                      const menuItem = menuItems.find((m) => m.id === newItemId);
                       if (!menuItem) return;
 
                       setCurrentOrderItems((prev) => {
@@ -842,7 +845,7 @@ export default function FoodMenu() {
                     confirmButtonColor: '#dc2626'
                   });
                 }
-              }} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2">
+              }} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
