@@ -80,8 +80,21 @@ export default function Home() {
 
       {/* Hero Section */}
       <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16 sm:pt-0">
-        {/* Solid Background with food-themed gradient */}
-        <div className="absolute inset-0 w-full h-full bg-linear-to-br from-[#0b1834] via-[#1a1a2e] to-[#16213e]" />
+        {/* Hero video background (scaled to crop landscape source into a portrait-style view) */}
+        <div className="absolute inset-0 w-full h-full bg-linear-to-br from-[#0b1834] via-[#1a1a2e] to-[#16213e]">
+          <video
+            className="absolute inset-0 h-full w-full object-cover"
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="auto"
+            aria-hidden="true"
+          >
+            <source src="/ads.mp4" type="video/mp4" />
+          </video>
+          <div className="absolute inset-0 bg-[#0b1834]/65" />
+        </div>
 
         {/* Floating Food Icons - Decorative */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -144,10 +157,10 @@ export default function Home() {
           {/* Main Heading with Elegant Typography */}
           <h1 className="mb-6 sm:mb-8 leading-tight animate-slide-up">
             <span className="block text-lg sm:text-2xl md:text-3xl lg:text-4xl font-light tracking-widest sm:tracking-[0.15em] text-orange-200/90 mb-2 sm:mb-4">
-              Craving Something Good?
+              Welcome to
             </span>
             <span className="block text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-serif font-bold tracking-wide">
-              <span className="hero-text-gradient bg-clip-text text-transparent">HOSTEL KITCHEN</span>
+              <span className="hero-text-gradient bg-clip-text text-transparent">NEMSU HOSTEL</span>
             </span>
           </h1>
 
@@ -158,22 +171,6 @@ export default function Home() {
               NEMSU - Lianga Campus
             </span>
           </p>
-
-          {/* Feature Tags - Food Focused */}
-          <div className="flex flex-col sm:flex-row flex-wrap justify-center gap-3 sm:gap-4 md:gap-6 mb-8 sm:mb-12 animate-fade-in" style={{ animationDelay: '0.3s' }}>
-            <span className="inline-flex items-center justify-center gap-2 text-orange-100/90 text-xs sm:text-sm md:text-base bg-white/5 px-4 py-2 rounded-full backdrop-blur-sm">
-              <span className="text-lg">🍚</span>
-              Main Dishes & Rice Meals
-            </span>
-            <span className="inline-flex items-center justify-center gap-2 text-orange-100/90 text-xs sm:text-sm md:text-base bg-white/5 px-4 py-2 rounded-full backdrop-blur-sm">
-              <span className="text-lg">🍰</span>
-              Snacks & Desserts
-            </span>
-            <span className="inline-flex items-center justify-center gap-2 text-orange-100/90 text-xs sm:text-sm md:text-base bg-white/5 px-4 py-2 rounded-full backdrop-blur-sm">
-              <span className="text-lg">🥤</span>
-              Refreshing Drinks
-            </span>
-          </div>
 
           {/* Price Highlight */}
           <div className="mb-8 animate-fade-in" style={{ animationDelay: '0.35s' }}>
@@ -299,7 +296,12 @@ export default function Home() {
             <div className="sm:col-span-2 lg:col-span-2">
               {/* Philippine Flag with Time and Day */}
               <div className="flex items-center gap-3 mb-3 sm:mb-4">
-                <span className="text-xl sm:text-2xl">🇵🇭</span>
+                <img
+                  src="/img/icons/philippine-flag.svg"
+                  alt="Philippine flag"
+                  className="h-6 w-9 sm:h-7 sm:w-10 rounded-sm object-cover"
+                  suppressHydrationWarning
+                />
                 <div className="text-zinc-400 text-xs sm:text-sm">
                   <div className="font-semibold text-white">{mounted ? formatTime(currentTime) : 'Loading...'}</div>
                   <div className="text-xs">{mounted ? formatDay(currentTime) : 'Loading...'}</div>
@@ -326,7 +328,7 @@ export default function Home() {
                     <span className="text-orange-400 text-base sm:text-lg">✆</span>
                     <div>
                       <p className="text-zinc-400 text-xs sm:text-sm mb-0.5 sm:mb-1">Phone</p>
-                      <a href="tel:+15551234567" className="text-white hover:text-orange-400 transition-colors font-medium text-sm sm:text-base">+1 (555) 123-4567</a>
+                      <a href="tel:09123456789" className="text-white hover:text-orange-400 transition-colors font-medium text-sm sm:text-base">+63 912 345 6789</a>
                     </div>
                   </div>
                 </li>
@@ -345,7 +347,7 @@ export default function Home() {
                     <span className="text-orange-400 text-base sm:text-lg">⏲</span>
                     <div>
                       <p className="text-zinc-400 text-xs sm:text-sm mb-0.5 sm:mb-1">Operating Hours</p>
-                      <p className="text-white font-medium text-sm sm:text-base">Mon - Sun</p>
+                      <p className="text-white font-medium text-sm sm:text-base">Mon - Fri</p>
                       <p className="text-zinc-400 text-xs sm:text-sm">10:00 AM – 10:00 PM</p>
                     </div>
                   </div>
