@@ -269,7 +269,7 @@ export default function Home() {
                     <a
                       href="https://www.google.com/maps/search/?api=1&query=8.633472,126.093306"
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noreferrer noopener"
                       className="inline-flex items-center gap-2 sm:gap-3 text-white font-bold py-3 sm:py-4 px-6 sm:px-10 lg:px-12 rounded-full shadow-button transition-all duration-300 text-sm sm:text-base lg:text-lg bg-orange-600 hover:scale-105 active:scale-95 hover:bg-orange-700"
                     >
                       <span>Get Directions</span>

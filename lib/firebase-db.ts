@@ -30,6 +30,7 @@ import {
   OrderType,
 } from "./firebase";
 import bcrypt from "bcryptjs";
+import { getOrderTotal } from "./order-pricing";
 
 // ============= ADMIN USERS =============
 
@@ -567,8 +568,14 @@ export async function updateOrderItems(
   await batch.commit();
 
   // Update order total
-  const total = resultItems.reduce((sum, it) => sum + it.lineTotal, 0);
-  await updateDoc(doc(db, COLLECTIONS.ORDERS, orderId), { total });
+  const orderRef = doc(db, COLLECTIONS.ORDERS, orderId);
+  const orderSnap = await getDoc(orderRef);
+  const existingOrderType: OrderType = orderSnap.exists() && orderSnap.data().orderType === "PICKUP"
+    ? "PICKUP"
+    : "DELIVERY";
+  const subtotal = resultItems.reduce((sum, it) => sum + it.lineTotal, 0);
+  const total = getOrderTotal(subtotal, existingOrderType);
+  await updateDoc(orderRef, { total });
 
   return resultItems;
 }

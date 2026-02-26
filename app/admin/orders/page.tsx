@@ -6,6 +6,7 @@ import Sidebar from "../components/Sidebar";
 import AdminHeader from "../components/AdminHeader";
 import Swal from "sweetalert2";
 import { formatDate, formatDateOnly } from "@/lib/date-utils";
+import { getDeliveryFee, getOrderTotal } from "@/lib/order-pricing";
 
 type OrderItem = {
   id: number;
@@ -65,6 +66,14 @@ export default function AdminOrdersPage() {
   const [selectedCity, setSelectedCity] = useState("");
   const [selectedBarangay, setSelectedBarangay] = useState("");
   const [streetAddress, setStreetAddress] = useState("");
+
+  const createItemsSubtotal = createOrderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const createDeliveryFee = getDeliveryFee(orderType);
+  const createOrderTotal = getOrderTotal(createItemsSubtotal, orderType);
+  const editPricingOrderType = editOrder?.orderType === "PICKUP" ? "PICKUP" : "DELIVERY";
+  const editItemsSubtotal = editItems.reduce((sum, item) => sum + (Number(item.unitPrice || 0) * Number(item.quantity || 0)), 0);
+  const editDeliveryFee = getDeliveryFee(editPricingOrderType);
+  const editOrderTotal = getOrderTotal(editItemsSubtotal, editPricingOrderType);
 
   const navItems = [
     { label: "Dashboard", href: "/admin/Dashboard" },
@@ -1319,7 +1328,17 @@ export default function AdminOrdersPage() {
                     </tbody>
                   </table>
                   <div style={{ padding: '12px 16px', background: '#f9fafb', textAlign: 'right', fontSize: 16, fontWeight: 700, borderTop: '2px solid #e5e7eb' }}>
-                    Total: ₱{editItems.reduce((s, x) => s + (Number(x.unitPrice || 0) * Number(x.quantity || 0)), 0).toFixed(2)}
+                    <div style={{ fontSize: 14, fontWeight: 500, color: '#4b5563' }}>
+                      Subtotal: ₱{editItemsSubtotal.toFixed(2)}
+                    </div>
+                    {editPricingOrderType === "DELIVERY" && (
+                      <div style={{ fontSize: 14, fontWeight: 500, color: '#4b5563' }}>
+                        Delivery Fee: ₱{editDeliveryFee.toFixed(2)}
+                      </div>
+                    )}
+                    <div>
+                      Total: ₱{editOrderTotal.toFixed(2)}
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1565,7 +1584,17 @@ export default function AdminOrdersPage() {
                       </tbody>
                     </table>
                     <div style={{ padding: "12px 16px", background: "#f9fafb", textAlign: "right", fontSize: 16, fontWeight: 700, borderTop: "2px solid #e5e7eb" }}>
-                      Total: ₱{createOrderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0).toFixed(2)}
+                      <div style={{ fontSize: 14, fontWeight: 500, color: '#4b5563' }}>
+                        Subtotal: ₱{createItemsSubtotal.toFixed(2)}
+                      </div>
+                      {orderType === "DELIVERY" && (
+                        <div style={{ fontSize: 14, fontWeight: 500, color: '#4b5563' }}>
+                          Delivery Fee: ₱{createDeliveryFee.toFixed(2)}
+                        </div>
+                      )}
+                      <div>
+                        Total: ₱{createOrderTotal.toFixed(2)}
+                      </div>
                     </div>
                   </div>
                 )}

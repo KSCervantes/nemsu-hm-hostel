@@ -7,6 +7,7 @@ import {
 import { serializeOrder } from "@/lib/firebase";
 import { sendOrderConfirmationEmail, sendOrderPickupConfirmationEmail } from "@/lib/email";
 import { validateOrderInput } from "@/lib/validators";
+import { getOrderTotal } from "@/lib/order-pricing";
 
 export async function GET(req: NextRequest) {
   try {
@@ -80,7 +81,9 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const total = items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0);
+    const resolvedOrderType = orderType === "PICKUP" ? "PICKUP" : "DELIVERY";
+    const subtotal = items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0);
+    const total = getOrderTotal(subtotal, resolvedOrderType);
 
     let desiredAt: Date | null = null;
     try {
@@ -97,7 +100,7 @@ export async function POST(req: NextRequest) {
       email: email ?? undefined,
       address: address ?? undefined,
       desiredAt,
-      orderType: orderType === 'PICKUP' ? 'PICKUP' : 'DELIVERY',
+      orderType: resolvedOrderType,
       total,
       items: items.map((it) => ({
         foodId: it.foodId,
@@ -126,7 +129,7 @@ export async function POST(req: NextRequest) {
           date: date,
           time: time,
         };
-        const emailResult = orderType === 'PICKUP'
+        const emailResult = resolvedOrderType === 'PICKUP'
           ? await sendOrderPickupConfirmationEmail({
               ...common,
               address: 'Pick up at: Hostel Restaurant, 123 Hostel Ave, Barangay Central, City, Province',

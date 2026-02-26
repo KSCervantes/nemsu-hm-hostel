@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import Swal from "sweetalert2";
 import { formatDate } from "@/lib/date-utils";
+import { getDeliveryFee, getOrderTotal, type OrderType } from "@/lib/order-pricing";
 
 type MenuItem = {
   id: string;
@@ -268,6 +269,11 @@ export default function FoodMenu() {
     const q = query.toLowerCase();
     return (it.name + " " + it.description).toLowerCase().includes(q);
   });
+
+  const effectiveOrderType: OrderType = orderType ?? "DELIVERY";
+  const orderSubtotal = currentOrderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const deliveryFee = getDeliveryFee(effectiveOrderType);
+  const orderTotal = getOrderTotal(orderSubtotal, effectiveOrderType);
 
   if (loading) {
     return (
@@ -674,7 +680,19 @@ export default function FoodMenu() {
                   </tbody>
                 </table>
               </div>
-              <div className="mt-3 text-right font-bold">Total: ₱{currentOrderItems.reduce((s, i) => s + i.price * i.quantity, 0)}</div>
+              <div className="mt-3 text-right">
+                <div className="text-sm text-zinc-600">
+                  Subtotal: ₱{orderSubtotal.toFixed(2)}
+                </div>
+                {effectiveOrderType === 'DELIVERY' && (
+                  <div className="text-sm text-zinc-600">
+                    Delivery Fee: ₱{deliveryFee.toFixed(2)}
+                  </div>
+                )}
+                <div className="font-bold text-base">
+                  Total: ₱{orderTotal.toFixed(2)}
+                </div>
+              </div>
             </div>
 
             <div className="flex justify-end gap-3">
@@ -715,7 +733,7 @@ export default function FoodMenu() {
                 }
 
                 // Validate delivery address for DELIVERY orders
-                if (orderType === 'DELIVERY') {
+                if (effectiveOrderType === 'DELIVERY') {
                   if (!selectedBarangay) {
                     Swal.fire({
                       icon: 'warning',
@@ -766,13 +784,18 @@ export default function FoodMenu() {
                   const res = await fetch("/api/orders", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ ...payload, orderType: orderType ?? 'DELIVERY' }),
+                    body: JSON.stringify({ ...payload, orderType: effectiveOrderType }),
                   });
                   if (!res.ok) {
                     throw new Error("Failed to place order");
                   }
                   const saved = await res.json();
-                  const total = currentOrderItems.reduce((s, i) => s + i.price * i.quantity, 0);
+                  const subtotal = currentOrderItems.reduce((s, i) => s + i.price * i.quantity, 0);
+                  const currentDeliveryFee = getDeliveryFee(effectiveOrderType);
+                  const total = getOrderTotal(subtotal, effectiveOrderType);
+                  const deliveryFeeHtml = effectiveOrderType === 'DELIVERY'
+                    ? `<div style="font-size: 13px; color: #6b7280; margin-top: 4px;">Delivery Fee: ₱${currentDeliveryFee.toFixed(2)}</div>`
+                    : '';
 
                   // Show order details in SweetAlert2 popup that auto-closes after 30 seconds
                   const itemsTable = currentOrderItems.map(it => `
@@ -798,7 +821,8 @@ export default function FoodMenu() {
                           <div style="font-size: 13px; color: #6b7280; margin-top: 4px;">
                             ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })} ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                           </div>
-                          <div style="font-weight: 700; font-size: 14px; color: #1f2937; margin-top: 4px;">Total: ₱${total}</div>
+                          ${deliveryFeeHtml}
+                          <div style="font-weight: 700; font-size: 14px; color: #1f2937; margin-top: 4px;">Total: ₱${total.toFixed(2)}</div>
                         </div>
 
                         <div style="margin-bottom: 16px;">
