@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Hurricane, Jim_Nightshade } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -9,6 +9,18 @@ const geistSans = Geist({
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+const hurricane = Hurricane({
+  variable: "--font-hurricane",
+  weight: "400",
+  subsets: ["latin"],
+});
+
+const jimNightshade = Jim_Nightshade({
+  variable: "--font-jim-nightshade",
+  weight: "400",
   subsets: ["latin"],
 });
 
@@ -30,7 +42,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${hurricane.variable} ${jimNightshade.variable} antialiased`}
       >
         {children}
       </body>

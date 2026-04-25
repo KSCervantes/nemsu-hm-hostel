@@ -80,8 +80,8 @@ export default function Home() {
 
       {/* Hero Section */}
       <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16 sm:pt-0">
-        {/* Hero video background (scaled to crop landscape source into a portrait-style view) */}
-        <div className="absolute inset-0 w-full h-full bg-linear-to-br from-[#0b1834] via-[#1a1a2e] to-[#16213e]">
+        {/* Hero video background */}
+        <div className="absolute inset-0 w-full h-full">
           <video
             className="absolute inset-0 h-full w-full object-cover"
             autoPlay
@@ -94,48 +94,6 @@ export default function Home() {
             <source src="/ads.mp4" type="video/mp4" />
           </video>
           <div className="absolute inset-0 bg-[#0b1834]/65" />
-        </div>
-
-        {/* Floating Food Icons - Decorative */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          {/* Fork & Knife - Top Left */}
-          <div className="absolute top-20 left-[5%] sm:left-[10%] opacity-10 sm:opacity-15 animate-float">
-            <svg viewBox="0 0 64 64" className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 text-orange-400">
-              <path fill="currentColor" d="M18 4v20c0 2.2-1.8 4-4 4s-4-1.8-4-4V4h2v20c0 1.1.9 2 2 2s2-.9 2-2V4h2zm-6 0h2v12h-2V4zm4 0h2v12h-2V4zm-4 22v34c0 2.2 1.8 4 4 4s4-1.8 4-4V26h-8z"/>
-            </svg>
-          </div>
-
-          {/* Plate/Dish - Top Right */}
-          <div className="absolute top-24 right-[5%] sm:right-[15%] opacity-10 sm:opacity-15 animate-float" style={{ animationDelay: '1s' }}>
-            <svg viewBox="0 0 64 64" className="w-14 h-14 sm:w-20 sm:h-20 md:w-24 md:h-24 text-amber-400">
-              <circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" strokeWidth="3"/>
-              <circle cx="32" cy="32" r="20" fill="none" stroke="currentColor" strokeWidth="2"/>
-              <circle cx="32" cy="32" r="8" fill="currentColor" opacity="0.3"/>
-            </svg>
-          </div>
-
-          {/* Spoon - Bottom Left */}
-          <div className="absolute bottom-32 left-[8%] sm:left-[12%] opacity-10 sm:opacity-15 animate-float" style={{ animationDelay: '2s' }}>
-            <svg viewBox="0 0 64 64" className="w-10 h-10 sm:w-14 sm:h-14 md:w-16 md:h-16 text-red-400 rotate-45">
-              <path fill="currentColor" d="M32 4c-8.8 0-16 7.2-16 16 0 7.1 4.6 13.1 11 15.2V60c0 2.2 1.8 4 4 4h2c2.2 0 4-1.8 4-4V35.2c6.4-2.1 11-8.1 11-15.2 0-8.8-7.2-16-16-16z"/>
-            </svg>
-          </div>
-
-          {/* Chef Hat - Bottom Right */}
-          <div className="absolute bottom-40 right-[10%] sm:right-[18%] opacity-10 sm:opacity-15 animate-float" style={{ animationDelay: '0.5s' }}>
-            <svg viewBox="0 0 64 64" className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 text-orange-300">
-              <path fill="currentColor" d="M52 24c0-6.6-5.4-12-12-12-1.9 0-3.7.4-5.3 1.2C33.1 8.4 28.8 5 24 5c-6.6 0-12 5.4-12 12 0 1.1.2 2.1.4 3.1C7.6 21.8 4 26.4 4 32c0 7.7 6.3 14 14 14h2v14h24V46h2c7.7 0 14-6.3 14-14 0-5.6-3.6-10.2-8.4-11.9.2-1 .4-2 .4-3.1z"/>
-            </svg>
-          </div>
-
-          {/* Steam/Aroma Lines */}
-          <div className="absolute top-1/3 left-1/4 opacity-5 sm:opacity-10">
-            <svg viewBox="0 0 40 60" className="w-8 h-12 sm:w-10 sm:h-16 text-white animate-steam">
-              <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" d="M20 50 Q10 40 20 30 Q30 20 20 10"/>
-              <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" d="M30 55 Q20 45 30 35 Q40 25 30 15" opacity="0.7"/>
-              <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" d="M10 55 Q0 45 10 35 Q20 25 10 15" opacity="0.7"/>
-            </svg>
-          </div>
         </div>
 
         {/* Decorative Corner Ornaments - Hidden on smallest screens */}
@@ -159,7 +117,7 @@ export default function Home() {
             <span className="block text-lg sm:text-2xl md:text-3xl lg:text-4xl font-light tracking-widest sm:tracking-[0.15em] text-orange-200/90 mb-2 sm:mb-4">
               Welcome to
             </span>
-            <span className="block text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-serif font-bold tracking-wide">
+            <span className="block text-5xl sm:text-6xl md:text-7xl lg:text-8xl xl:text-9xl font-hurricane font-normal leading-none tracking-normal">
               <span className="hero-text-gradient bg-clip-text text-transparent">NEMSU HOSTEL</span>
             </span>
           </h1>
@@ -167,7 +125,7 @@ export default function Home() {
           {/* Subtitle with Refined Styling */}
           <p className="text-base sm:text-xl md:text-2xl lg:text-3xl text-white/95 mb-4 sm:mb-6 max-w-4xl mx-auto leading-relaxed font-light tracking-wide animate-fade-in px-2" style={{ animationDelay: '0.2s' }}>
             Savor authentic home-cooked meals at{" "}
-            <span className="text-amber-300 font-medium block sm:inline mt-1 sm:mt-0">
+            <span className="text-amber-300 font-jim-nightshade text-2xl sm:text-3xl md:text-4xl lg:text-5xl block sm:inline mt-1 sm:mt-0">
               NEMSU - Lianga Campus
             </span>
           </p>

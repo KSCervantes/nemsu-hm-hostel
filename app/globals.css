@@ -164,6 +164,18 @@ main {
   animation: bounce-slow 2s ease-in-out infinite;
 }
 
+.font-hurricane {
+  font-family: var(--font-hurricane), "Brush Script MT", cursive;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.font-jim-nightshade {
+  font-family: var(--font-jim-nightshade), Georgia, serif;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
 /* Hero Text Gradient */
 .hero-text-gradient {
   background: linear-gradient(
