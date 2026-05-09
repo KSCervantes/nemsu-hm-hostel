@@ -21,8 +21,6 @@ import {
 } from "firebase/firestore";
 import {
   getAuth,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
   Auth,
 } from "firebase/auth";
 import {
@@ -45,20 +43,10 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-let app: FirebaseApp;
-let db: Firestore;
-let auth: Auth;
-let storage: FirebaseStorage;
-
-if (!getApps().length) {
-  app = initializeApp(firebaseConfig);
-} else {
-  app = getApps()[0];
-}
-
-db = getFirestore(app);
-auth = getAuth(app);
-storage = getStorage(app);
+const app: FirebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+const db: Firestore = getFirestore(app);
+const auth: Auth = getAuth(app);
+const storage: FirebaseStorage = getStorage(app);
 
 // Export Firebase instances
 export { app, db, auth, storage };
@@ -131,6 +119,7 @@ export interface OrderItem {
   lineTotal: number;
   notes?: string | null;
   img?: string | null; // Food item image
+  menuItemMissing?: boolean;
 }
 
 export type OrderStatus = "PENDING" | "ACCEPTED" | "COMPLETED" | "CANCELLED";
@@ -150,6 +139,9 @@ export interface Order {
   desiredAt?: Date | Timestamp | null;
   archived: boolean;
   archivedAt?: Date | Timestamp | null;
+  pendingCancellationWarningSentAt?: Date | Timestamp | null;
+  autoCancelledAt?: Date | Timestamp | null;
+  cancellationReason?: string | null;
   items?: OrderItem[];
 }
 
@@ -176,7 +168,7 @@ export interface AuditLog {
 
 export interface AppSettings {
   id?: string;
-  settings: Record<string, any>;
+  settings: Record<string, unknown>;
   createdAt: Date | Timestamp;
   updatedAt: Date | Timestamp;
 }
@@ -218,9 +210,20 @@ export function toTimestamp(date: Date | string | null | undefined): Timestamp |
   return null;
 }
 
+export type SerializedOrder = Omit<
+  Order,
+  "createdAt" | "desiredAt" | "archivedAt" | "pendingCancellationWarningSentAt" | "autoCancelledAt"
+> & {
+  createdAt: Date | Timestamp | string;
+  desiredAt?: Date | Timestamp | string | null;
+  archivedAt?: Date | Timestamp | string | null;
+  pendingCancellationWarningSentAt?: Date | Timestamp | string | null;
+  autoCancelledAt?: Date | Timestamp | string | null;
+};
+
 // Helper to serialize Firestore Timestamps to ISO strings for API responses
-export function serializeOrder(order: Order): any {
-  const serialized: any = { ...order };
+export function serializeOrder(order: Order): SerializedOrder {
+  const serialized: SerializedOrder = { ...order };
 
   // Convert Timestamp fields to ISO strings
   if (order.createdAt) {
@@ -244,6 +247,22 @@ export function serializeOrder(order: Order): any {
       serialized.archivedAt = order.archivedAt.toDate().toISOString();
     } else if (order.archivedAt instanceof Date) {
       serialized.archivedAt = order.archivedAt.toISOString();
+    }
+  }
+
+  if (order.pendingCancellationWarningSentAt) {
+    if (order.pendingCancellationWarningSentAt instanceof Timestamp) {
+      serialized.pendingCancellationWarningSentAt = order.pendingCancellationWarningSentAt.toDate().toISOString();
+    } else if (order.pendingCancellationWarningSentAt instanceof Date) {
+      serialized.pendingCancellationWarningSentAt = order.pendingCancellationWarningSentAt.toISOString();
+    }
+  }
+
+  if (order.autoCancelledAt) {
+    if (order.autoCancelledAt instanceof Timestamp) {
+      serialized.autoCancelledAt = order.autoCancelledAt.toDate().toISOString();
+    } else if (order.autoCancelledAt instanceof Date) {
+      serialized.autoCancelledAt = order.autoCancelledAt.toISOString();
     }
   }
 

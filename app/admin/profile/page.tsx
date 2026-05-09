@@ -6,6 +6,27 @@ import Sidebar from "../components/Sidebar";
 import Swal from "sweetalert2";
 import { formatDateOnly } from "@/lib/date-utils";
 
+function ShieldUserIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+      <path d="M6.376 18.91a6 6 0 0 1 11.249.003" />
+      <circle cx="12" cy="11" r="4" />
+    </svg>
+  );
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -38,7 +59,7 @@ export default function ProfilePage() {
     let token: string | null = null;
     try {
       token = localStorage.getItem("admin_token");
-    } catch (e) {
+    } catch {
       token = null;
     }
     if (!token) {
@@ -228,12 +249,12 @@ export default function ProfilePage() {
         newPassword: "",
         confirmPassword: "",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       setSaving(false);
       Swal.fire({
         icon: "error",
         title: "Update Failed",
-        text: error.message || "Failed to update profile",
+        text: error instanceof Error ? error.message : "Failed to update profile",
         confirmButtonColor: "#dc2626",
       });
     }
@@ -259,7 +280,8 @@ export default function ProfilePage() {
           {/* Header */}
           <header style={{ marginBottom: 24 }}>
             <h1 style={{ margin: 0, display: "flex", alignItems: "center", gap: 8, fontSize: 28, color: "#1f2937" }}>
-              👤 Admin Profile
+              <ShieldUserIcon size={28} />
+              <span>Admin Profile</span>
             </h1>
             <p style={{ color: "#6b7280", margin: "8px 0 0 0", fontSize: 14 }}>
               Manage your account information and security
@@ -288,7 +310,7 @@ export default function ProfilePage() {
                       border: "4px solid #e5e7eb",
                     }}
                   >
-                    👤
+                    <ShieldUserIcon size={42} />
                   </div>
                   <div>
                     <h2 style={{ margin: 0, fontSize: 24, color: "#1f2937" }}>{adminData.username}</h2>

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "../components/Sidebar";
 import AdminHeader from "../components/AdminHeader";
+import PageSearch from "../components/PageSearch";
 import Swal from "sweetalert2";
 import { formatDate, formatDateOnly } from "@/lib/date-utils";
 import { getDeliveryFee, getOrderTotal } from "@/lib/order-pricing";
@@ -34,8 +35,39 @@ type Order = {
   items: OrderItem[];
 };
 
+type MenuItem = {
+  id: string;
+  name: string;
+  price: number;
+  description: string;
+  category: string;
+};
+
+type FoodItemResponse = {
+  id?: string | number;
+  name?: string;
+  price?: string | number;
+  description?: string | null;
+  category?: string | null;
+};
+
+type LocationOption = {
+  code: string;
+  name: string;
+};
+
+type OrderStatusFilter = "PENDING" | "ACCEPTED" | "COMPLETED" | "CANCELLED";
+
+const orderStatusFilters: OrderStatusFilter[] = ["PENDING", "ACCEPTED", "COMPLETED", "CANCELLED"];
+
+function getOrderStatusFilter(value: string | null): OrderStatusFilter | "" {
+  const normalizedValue = value?.toUpperCase() as OrderStatusFilter | undefined;
+  return normalizedValue && orderStatusFilters.includes(normalizedValue) ? normalizedValue : "";
+}
+
 export default function AdminOrdersPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -43,24 +75,25 @@ export default function AdminOrdersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<OrderStatusFilter | "">("");
 
   // Create Order states
   const [isCreateOrderOpen, setIsCreateOrderOpen] = useState(false);
-  const [menuItems, setMenuItems] = useState<any[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   // Edit Order states
   const [isEditOrderOpen, setIsEditOrderOpen] = useState(false);
   const [editOrder, setEditOrder] = useState<Order | null>(null);
-  const [editItems, setEditItems] = useState<{ id?: number; foodId?: number; name: string; quantity: number; unitPrice: string; notes?: string }[]>([]);
+  const [editItems, setEditItems] = useState<{ id?: string; foodId?: string; name: string; quantity: number; unitPrice: string; notes?: string }[]>([]);
   const [orderType, setOrderType] = useState<'DELIVERY' | 'PICKUP'>('DELIVERY');
-  const [createOrderItems, setCreateOrderItems] = useState<{id: number, name: string, price: number, quantity: number, notes: string}[]>([]);
+  const [createOrderItems, setCreateOrderItems] = useState<{id: string, name: string, price: number, quantity: number, notes: string}[]>([]);
   const [customerName, setCustomerName] = useState("");
   const [contactNumber, setContactNumber] = useState("");
   const [email, setEmail] = useState("");
   const [desiredTime, setDesiredTime] = useState("");
-  const [regions, setRegions] = useState<any[]>([]);
-  const [provinces, setProvinces] = useState<any[]>([]);
-  const [cities, setCities] = useState<any[]>([]);
-  const [barangays, setBarangays] = useState<any[]>([]);
+  const [regions, setRegions] = useState<LocationOption[]>([]);
+  const [provinces, setProvinces] = useState<LocationOption[]>([]);
+  const [cities, setCities] = useState<LocationOption[]>([]);
+  const [barangays, setBarangays] = useState<LocationOption[]>([]);
   const [selectedRegion, setSelectedRegion] = useState("");
   const [selectedProvince, setSelectedProvince] = useState("");
   const [selectedCity, setSelectedCity] = useState("");
@@ -84,11 +117,60 @@ export default function AdminOrdersPage() {
     { label: "Income", href: "/admin/Income" },
   ];
 
+  function updateSearchTerm(value: string) {
+    setSearchTerm(value);
+
+    const params = new URLSearchParams(window.location.search);
+    const hasSearch = value.trim().length > 0;
+
+    if (hasSearch) {
+      params.set("search", value);
+    } else {
+      params.delete("search");
+    }
+
+    const query = params.toString();
+    router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+    window.dispatchEvent(new CustomEvent("admin-search-change", { detail: { search: hasSearch ? value : "" } }));
+  }
+
+  function clearStatusFilter() {
+    const params = new URLSearchParams(window.location.search);
+    params.delete("status");
+    setStatusFilter("");
+
+    const query = params.toString();
+    router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+  }
+
+  useEffect(() => {
+    function syncUrlFilters() {
+      const params = new URLSearchParams(window.location.search);
+      setSearchTerm(params.get("search") ?? "");
+      setStatusFilter(getOrderStatusFilter(params.get("status")));
+    }
+
+    function handleAdminSearch(event: Event) {
+      if (event instanceof CustomEvent && typeof event.detail?.search === "string") {
+        setSearchTerm(event.detail.search);
+      }
+    }
+
+    syncUrlFilters();
+    window.addEventListener("popstate", syncUrlFilters);
+    window.addEventListener("admin-search-change", handleAdminSearch);
+
+    return () => {
+      window.removeEventListener("popstate", syncUrlFilters);
+      window.removeEventListener("admin-search-change", handleAdminSearch);
+    };
+  }, []);
+
   useEffect(() => {
     let hasToken = false;
     try {
       hasToken = Boolean(localStorage.getItem("admin_token"));
-    } catch (e) {
+    } catch {
       hasToken = false;
     }
     if (!hasToken) {
@@ -120,10 +202,11 @@ export default function AdminOrdersPage() {
     fetch("/api/food-items")
       .then((res) => res.json())
       .then((data) => {
-        setMenuItems(data.map((item: any) => ({
-          id: item.id,
-          name: item.name,
-          price: parseFloat(item.price),
+        const sourceItems: FoodItemResponse[] = Array.isArray(data) ? data : [];
+        setMenuItems(sourceItems.map((item) => ({
+          id: String(item.id ?? ""),
+          name: item.name || "",
+          price: parseFloat(String(item.price ?? 0)),
           description: item.description || "",
           category: item.category || "main",
         })));
@@ -239,7 +322,7 @@ export default function AdminOrdersPage() {
       desiredAt: desiredTime || undefined,
       orderType,
       items: createOrderItems.map(item => ({
-        foodItemId: item.id,
+        foodId: item.id,
         quantity: item.quantity,
         notes: item.notes || undefined,
       })),
@@ -276,7 +359,7 @@ export default function AdminOrdersPage() {
       setSelectedBarangay('');
       setStreetAddress('');
       fetchOrders();
-    } catch (err) {
+    } catch {
       Swal.fire({
         icon: 'error',
         title: 'Error',
@@ -328,7 +411,7 @@ export default function AdminOrdersPage() {
         timer: 2000,
         showConfirmButton: false
       });
-    } catch (err) {
+    } catch {
       Swal.fire({
         icon: 'error',
         title: 'Update Failed',
@@ -387,11 +470,12 @@ export default function AdminOrdersPage() {
         timer: 2000,
         showConfirmButton: false
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to delete order. Please try again.';
       Swal.fire({
         icon: 'error',
         title: 'Delete Failed',
-        text: err.message || 'Failed to delete order. Please try again.',
+        text: message,
         confirmButtonColor: '#dc2626'
       });
     }
@@ -400,7 +484,7 @@ export default function AdminOrdersPage() {
   function openEdit(order: Order) {
     setEditOrder(order);
     // Map items to editable shape
-    const mapped = order.items.map((it) => ({ id: it.id, foodId: (it as any).foodId, name: it.name, quantity: it.quantity, unitPrice: it.unitPrice, notes: it.notes }));
+    const mapped = order.items.map((it) => ({ id: it.id != null ? String(it.id) : undefined, foodId: it.foodId, name: it.name, quantity: it.quantity, unitPrice: it.unitPrice, notes: it.notes }));
     setEditItems(mapped);
     setIsEditOrderOpen(true);
   }
@@ -419,14 +503,14 @@ export default function AdminOrdersPage() {
       return;
     }
 
-    const payload: any = {
+    const payload = {
       customer: editOrder.customer,
       contactNumber: editOrder.contactNumber,
       email: editOrder.email,
       address: editOrder.address,
       desiredAt: editOrder.desiredAt || undefined,
-      items: editItems.map(i => ({ id: i.id, foodId: i.foodId, name: i.name, quantity: i.quantity, unitPrice: parseFloat(String(i.unitPrice)), notes: i.notes }))
-    }
+      items: editItems.map(i => ({ id: i.id, foodId: i.foodId, quantity: i.quantity, notes: i.notes }))
+    };
 
     try {
       const res = await fetch(`/api/orders/${editOrder.id}`, {
@@ -437,14 +521,13 @@ export default function AdminOrdersPage() {
 
       if (!res.ok) throw new Error('Update failed');
 
-      const updated = await res.json();
       setIsEditOrderOpen(false);
       setEditOrder(null);
       setEditItems([]);
       fetchOrders();
 
       Swal.fire({ icon: 'success', title: 'Order Updated', timer: 2000, showConfirmButton: false });
-    } catch (err) {
+    } catch {
       Swal.fire({ icon: 'error', title: 'Update Failed', text: 'Failed to update order. Please try again.' });
     }
   }
@@ -664,7 +747,15 @@ export default function AdminOrdersPage() {
 
   // Search and filter orders
   const filteredOrders = orders.filter((order) => {
-    const searchLower = searchTerm.toLowerCase();
+    if (statusFilter && order.status !== statusFilter) {
+      return false;
+    }
+
+    const searchLower = searchTerm.toLowerCase().trim();
+    if (!searchLower) {
+      return true;
+    }
+
     return (
       (order.uid ? order.uid.toLowerCase().includes(searchLower) : order.id.toString().includes(searchLower)) ||
       order.customer?.toLowerCase().includes(searchLower) ||
@@ -687,7 +778,7 @@ export default function AdminOrdersPage() {
   // Reset to page 1 when search changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, statusFilter]);
 
   return (
     <div style={{ fontFamily: "system-ui,Segoe UI,Roboto,Helvetica,Arial", padding: 0 }}>
@@ -768,69 +859,50 @@ export default function AdminOrdersPage() {
 
           {/* Search Bar */}
           {!loading && orders.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ position: "relative", maxWidth: 500 }}>
-                <svg
-                  style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}
-                  width="18"
-                  height="18"
-                  fill="currentColor"
-                  viewBox="0 0 16 16"
-                >
-                  <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Search by order ID, customer, contact, email, or status..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px 10px 40px",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 8,
-                    fontSize: 14,
-                    outline: "none",
-                    transition: "all 0.2s"
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "#667eea";
-                    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(102, 126, 234, 0.1)";
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = "#e5e7eb";
-                    e.currentTarget.style.boxShadow = "none";
-                  }}
-                />
-                {searchTerm && (
-                  <button
-                    onClick={() => setSearchTerm("")}
-                    style={{
-                      position: "absolute",
-                      right: 12,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      background: "transparent",
-                      border: "none",
-                      color: "#9ca3af",
-                      cursor: "pointer",
-                      fontSize: 18,
-                      padding: 4,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center"
-                    }}
-                    title="Clear search"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-              {searchTerm && (
-                <div style={{ marginTop: 8, fontSize: 13, color: "#6b7280" }}>
-                  Found <strong>{filteredOrders.length}</strong> {filteredOrders.length === 1 ? "order" : "orders"}
-                </div>
-              )}
+            <PageSearch
+              ariaLabel="Search active orders"
+              placeholder="Search by order ID, customer, contact, email, or status..."
+              value={searchTerm}
+              onChange={updateSearchTerm}
+              onClear={() => updateSearchTerm("")}
+              resultCount={filteredOrders.length}
+              resultLabel="order"
+            />
+          )}
+
+          {!loading && orders.length > 0 && statusFilter && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                margin: "0 0 16px 0",
+                padding: "10px 14px",
+                borderRadius: 8,
+                border: "1px solid #fcd34d",
+                background: "#fffbeb",
+                color: "#92400e",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              <span>Showing {statusFilter.toLowerCase()} orders</span>
+              <button
+                type="button"
+                onClick={clearStatusFilter}
+                style={{
+                  border: 0,
+                  background: "transparent",
+                  color: "#92400e",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  padding: "2px 0",
+                }}
+              >
+                Clear filter
+              </button>
             </div>
           )}
 
@@ -1275,11 +1347,11 @@ export default function AdminOrdersPage() {
                     const select = document.getElementById('editMenuItemSelect') as HTMLSelectElement;
                     const qtyInput = document.getElementById('editQuantityInput') as HTMLInputElement;
                     const notesInput = document.getElementById('editNotesInput') as HTMLInputElement;
-                    const itemId = parseInt(select.value);
+                    const itemId = select.value;
                     const qty = parseInt(qtyInput.value) || 1;
                     const notes = notesInput.value;
                     if (!itemId) { Swal.fire({ icon: 'warning', title: 'Select Item', text: 'Please select an item first.' }); return; }
-                    const item = menuItems.find(m => m.id === itemId);
+                    const item = menuItems.find(m => String(m.id) === itemId);
                     if (!item) return;
                     setEditItems([...editItems, { foodId: item.id, name: item.name, quantity: qty, unitPrice: String(item.price), notes }]);
                     select.value = '';
@@ -1308,13 +1380,13 @@ export default function AdminOrdersPage() {
                       {editItems.map((it, idx) => (
                         <tr key={idx} style={{ borderTop: "1px solid #e5e7eb" }}>
                           <td style={{ padding: "10px 12px", fontSize: 14 }}>
-                            <input value={it.name} onChange={(e) => { const copy = [...editItems]; copy[idx].name = e.target.value; setEditItems(copy); }} style={{ width: '100%', border: '1px solid #e5e7eb', padding: '6px 8px', borderRadius: 6 }} />
+                            <input value={it.name} readOnly style={{ width: '100%', border: '1px solid #e5e7eb', padding: '6px 8px', borderRadius: 6, background: '#f9fafb', color: '#4b5563' }} />
                           </td>
                           <td style={{ padding: "10px 12px", fontSize: 14 }}>
                             <input type="number" min="1" value={String(it.quantity)} onChange={(e) => { const copy = [...editItems]; copy[idx].quantity = Number(e.target.value || 1); setEditItems(copy); }} style={{ width: '80px', border: '1px solid #e5e7eb', padding: '6px 8px', borderRadius: 6 }} />
                           </td>
                           <td style={{ padding: "10px 12px", fontSize: 14 }}>
-                            <input value={it.unitPrice} onChange={(e) => { const copy = [...editItems]; copy[idx].unitPrice = e.target.value; setEditItems(copy); }} style={{ width: '120px', border: '1px solid #e5e7eb', padding: '6px 8px', borderRadius: 6 }} />
+                            <input value={it.unitPrice} readOnly style={{ width: '120px', border: '1px solid #e5e7eb', padding: '6px 8px', borderRadius: 6, background: '#f9fafb', color: '#4b5563' }} />
                           </td>
                           <td style={{ padding: "10px 12px", fontSize: 14, fontWeight: 600 }}>₱{(Number(it.unitPrice || 0) * Number(it.quantity || 0)).toFixed(2)}</td>
                           <td style={{ padding: "10px 12px", fontSize: 14 }}>
@@ -1515,7 +1587,7 @@ export default function AdminOrdersPage() {
                         const qtyInput = document.getElementById('quantityInput') as HTMLInputElement;
                         const notesInput = document.getElementById('notesInput') as HTMLInputElement;
 
-                        const itemId = parseInt(select.value);
+                        const itemId = select.value;
                         const qty = parseInt(qtyInput.value) || 1;
                         const notes = notesInput.value;
 
@@ -1524,7 +1596,7 @@ export default function AdminOrdersPage() {
                           return;
                         }
 
-                        const item = menuItems.find(m => m.id === itemId);
+                        const item = menuItems.find(m => String(m.id) === itemId);
                         if (!item) return;
 
                         setCreateOrderItems([...createOrderItems, { id: item.id, name: item.name, price: item.price, quantity: qty, notes }]);

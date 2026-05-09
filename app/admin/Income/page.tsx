@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import AdminHeader from "../components/AdminHeader";
 import { useRouter } from "next/navigation";
@@ -20,14 +20,27 @@ interface IncomeData {
   label: string;
 }
 
+type IncomeFilter = 'daily' | 'weekly' | 'monthly' | 'yearly';
+
+const monthOptions = Array.from({ length: 12 }, (_, month) => ({
+  value: month,
+  label: new Date(2024, month, 1).toLocaleDateString('en-US', { month: 'long' }),
+}));
+
+const filterOptions: { value: IncomeFilter; label: string }[] = [
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly', label: 'Yearly' },
+];
+
 export default function IncomePage() {
   const router = useRouter();
   const [orders, setOrders] = useState<OrderData[]>([]);
-  const [filter, setFilter] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('monthly');
-  const [incomeData, setIncomeData] = useState<IncomeData[]>([]);
-  const [totalIncome, setTotalIncome] = useState(0);
+  const [filter, setFilter] = useState<IncomeFilter>('monthly');
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
   const navItems = [
     { label: "Dashboard", href: "/admin/Dashboard" },
@@ -38,88 +51,59 @@ export default function IncomePage() {
     { label: "Income", href: "/admin/Income" },
   ];
 
-  useEffect(() => {
-    let hasToken = false;
-    try {
-      hasToken = Boolean(localStorage.getItem("admin_token"));
-    } catch (e) {
-      hasToken = false;
-    }
-    if (!hasToken) {
-      router.push("/admin/login");
-      return;
-    }
-
-    // Fetch orders
-    fetch("/api/orders")
-      .then((res) => res.json())
-      .then((data: OrderData[]) => {
-        if (Array.isArray(data)) {
-          setOrders(data);
-          calculateIncome(data, filter);
-        }
-      })
-      .catch(() => {});
-  }, [router]);
-
-  useEffect(() => {
-    if (orders.length > 0) {
-      calculateIncome(orders, filter);
-    }
-  }, [filter, orders]);
-
-  const calculateIncome = (data: OrderData[], filterType: 'daily' | 'weekly' | 'monthly' | 'yearly') => {
-    const today = new Date();
+  const { incomeData, totalIncome } = useMemo(() => {
+    const data = orders;
+    const filterType = filter;
     let periods: { start: Date; end: Date; label: string }[] = [];
+    const monthStart = new Date(selectedYear, selectedMonth, 1, 0, 0, 0, 0);
+    const monthEnd = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59, 999);
 
     if (filterType === 'daily') {
-      // Last 7 days
-      periods = Array.from({ length: 7 }, (_, i) => {
-        const date = new Date(today);
-        date.setDate(date.getDate() - (6 - i));
+      const daysInMonth = monthEnd.getDate();
+      periods = Array.from({ length: daysInMonth }, (_, i) => {
+        const date = new Date(selectedYear, selectedMonth, i + 1);
         return {
-          start: new Date(date.setHours(0, 0, 0, 0)),
-          end: new Date(date.setHours(23, 59, 59, 999)),
+          start: new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0),
+          end: new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999),
           label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
         };
       });
     } else if (filterType === 'weekly') {
-      // Last 12 weeks
-      periods = Array.from({ length: 12 }, (_, i) => {
-        const weekStart = new Date(today);
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay() - (11 - i) * 7);
-        weekStart.setHours(0, 0, 0, 0);
+      const weeklyPeriods: { start: Date; end: Date; label: string }[] = [];
+      let weekStart = new Date(monthStart);
+
+      while (weekStart <= monthEnd) {
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekEnd.getDate() + 6);
         weekEnd.setHours(23, 59, 59, 999);
-        return {
-          start: weekStart,
-          end: weekEnd,
-          label: `Week ${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-        };
-      });
+        if (weekEnd > monthEnd) {
+          weekEnd.setTime(monthEnd.getTime());
+        }
+
+        weeklyPeriods.push({
+          start: new Date(weekStart),
+          end: new Date(weekEnd),
+          label: `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+        });
+
+        weekStart = new Date(weekEnd);
+        weekStart.setDate(weekStart.getDate() + 1);
+        weekStart.setHours(0, 0, 0, 0);
+      }
+
+      periods = weeklyPeriods;
     } else if (filterType === 'monthly') {
-      // Last 12 months
-      periods = Array.from({ length: 12 }, (_, i) => {
-        const date = new Date(today.getFullYear(), today.getMonth() - (11 - i), 1);
-        const monthStart = new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
-        const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
-        return {
-          start: monthStart,
-          end: monthEnd,
-          label: date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-        };
-      });
+      periods = [{
+        start: monthStart,
+        end: monthEnd,
+        label: monthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+      }];
     } else {
-      // Last 5 years
-      periods = Array.from({ length: 5 }, (_, i) => {
-        const year = today.getFullYear() - (4 - i);
-        return {
-          start: new Date(year, 0, 1, 0, 0, 0, 0),
-          end: new Date(year, 11, 31, 23, 59, 59, 999),
-          label: year.toString()
-        };
-      });
+      periods = [{
+        start: new Date(selectedYear, 0, 1, 0, 0, 0, 0),
+        end: new Date(selectedYear, 11, 31, 23, 59, 59, 999),
+        label: selectedYear.toString()
+      }];
     }
 
     const income: IncomeData[] = periods.map(period => {
@@ -156,13 +140,83 @@ export default function IncomePage() {
         return sum + orderTotal;
       }, 0);
 
-    setIncomeData(income);
-    setTotalIncome(total);
-  };
+    return { incomeData: income, totalIncome: total };
+  }, [filter, orders, selectedMonth, selectedYear]);
+
+  const availableYears = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const years = new Set<number>();
+
+    for (let year = currentYear - 8; year <= currentYear + 1; year += 1) {
+      years.add(year);
+    }
+
+    orders.forEach((order) => {
+      const orderDate = toDateObject(order.createdAt);
+      if (orderDate) {
+        years.add(orderDate.getFullYear());
+      }
+    });
+
+    years.add(selectedYear);
+    return Array.from(years).sort((a, b) => b - a);
+  }, [orders, selectedYear]);
+
+  const selectedMonthLabel = monthOptions[selectedMonth]?.label ?? '';
+  const selectedPeriodLabel = filter === 'yearly' ? selectedYear.toString() : `${selectedMonthLabel} ${selectedYear}`;
+  const selectedFilterLabel = filterOptions.find((option) => option.value === filter)?.label ?? 'Monthly';
+  const periodIncome = incomeData.reduce((sum, item) => sum + item.income, 0);
+  const periodOrderCount = incomeData.reduce((sum, item) => sum + item.orderCount, 0);
+  const averageOrderValue = periodOrderCount > 0 ? periodIncome / periodOrderCount : 0;
+  const reportDescription = filter === 'daily'
+    ? `Daily breakdown for ${selectedPeriodLabel}`
+    : filter === 'weekly'
+      ? `Weekly breakdown for ${selectedPeriodLabel}`
+      : filter === 'monthly'
+        ? `Monthly total for ${selectedPeriodLabel}`
+        : `Yearly total for ${selectedPeriodLabel}`;
+
+  const filterButtonStyle = (value: IncomeFilter) => ({
+    padding: "10px 20px",
+    fontSize: 14,
+    fontWeight: 600,
+    border: filter === value ? "2px solid #3b82f6" : "1px solid #e5e7eb",
+    borderRadius: 10,
+    background: filter === value ? "#eff6ff" : "transparent",
+    color: filter === value ? "#3b82f6" : "#6b7280",
+    cursor: "pointer",
+    transition: "all 0.2s"
+  });
+
+  useEffect(() => {
+    let hasToken = false;
+    try {
+      hasToken = Boolean(localStorage.getItem("admin_token"));
+    } catch {
+      hasToken = false;
+    }
+    if (!hasToken) {
+      router.push("/admin/login");
+      return;
+    }
+
+    // Fetch orders
+    fetch("/api/orders")
+      .then((res) => res.json())
+      .then((data: OrderData[]) => {
+        if (Array.isArray(data)) {
+          setOrders(data);
+        }
+      })
+      .catch(() => {});
+  }, [router]);
 
   const handleExportCSV = () => {
     const headers = ['Period', 'Income (₱)', 'Orders'];
     const rows = incomeData.map(item => [item.label, item.income.toFixed(2), item.orderCount]);
+    const reportScope = filter === 'yearly'
+      ? selectedYear.toString()
+      : `${selectedYear}_${String(selectedMonth + 1).padStart(2, '0')}`;
     const csvContent = [
       headers.join(','),
       ...rows.map(row => row.join(','))
@@ -172,7 +226,7 @@ export default function IncomePage() {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `income_report_${filter}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `income_report_${filter}_${reportScope}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -244,10 +298,10 @@ export default function IncomePage() {
                   </div>
                 </div>
                 <div style={{ fontSize: 42, fontWeight: 800, color: "#1f2937", marginBottom: 4, lineHeight: 1 }}>
-                  ₱{incomeData.reduce((sum, item) => sum + item.income, 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ₱{periodIncome.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
                 <div style={{ fontSize: 13, color: "#6b7280", fontWeight: 500 }}>
-                  {filter.charAt(0).toUpperCase() + filter.slice(1)} view
+                  {selectedFilterLabel} view for {selectedPeriodLabel}
                 </div>
               </div>
 
@@ -274,7 +328,7 @@ export default function IncomePage() {
                   </div>
                 </div>
                 <div style={{ fontSize: 42, fontWeight: 800, color: "#1f2937", marginBottom: 4, lineHeight: 1 }}>
-                  {incomeData.reduce((sum, item) => sum + item.orderCount, 0)}
+                  {periodOrderCount}
                 </div>
                 <div style={{ fontSize: 13, color: "#6b7280", fontWeight: 500 }}>
                   Completed orders
@@ -305,9 +359,7 @@ export default function IncomePage() {
                   </div>
                 </div>
                 <div style={{ fontSize: 42, fontWeight: 800, color: "#1f2937", marginBottom: 4, lineHeight: 1 }}>
-                  ₱{(incomeData.reduce((sum, item) => sum + item.orderCount, 0) > 0
-                    ? incomeData.reduce((sum, item) => sum + item.income, 0) / incomeData.reduce((sum, item) => sum + item.orderCount, 0)
-                    : 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ₱{averageOrderValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
                 <div style={{ fontSize: 13, color: "#6b7280", fontWeight: 500 }}>
                   Per order
@@ -329,75 +381,87 @@ export default function IncomePage() {
               flexWrap: "wrap",
               gap: 16
             }}>
-              <div>
-                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  Time Period
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 18, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    View By
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {filterOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => setFilter(option.value)}
+                        style={filterButtonStyle(option.value)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={() => setFilter('daily')}
+
+                {filter !== 'yearly' && (
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, color: "#6b7280", marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      Month
+                    </label>
+                    <select
+                      value={selectedMonth}
+                      onChange={(event) => setSelectedMonth(Number(event.target.value))}
+                      style={{
+                        minWidth: 150,
+                        padding: "11px 14px",
+                        fontSize: 14,
+                        fontWeight: 600,
+                        border: "1px solid #d1d5db",
+                        borderRadius: 10,
+                        background: "white",
+                        color: "#1f2937",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {monthOptions.map((month) => (
+                        <option key={month.value} value={month.value}>
+                          {month.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <label style={{ display: "block", fontSize: 12, color: "#6b7280", marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    Year
+                  </label>
+                  <select
+                    value={selectedYear}
+                    onChange={(event) => setSelectedYear(Number(event.target.value))}
                     style={{
-                      padding: "10px 20px",
+                      minWidth: 110,
+                      padding: "11px 14px",
                       fontSize: 14,
                       fontWeight: 600,
-                      border: filter === 'daily' ? "2px solid #3b82f6" : "1px solid #e5e7eb",
+                      border: "1px solid #d1d5db",
                       borderRadius: 10,
-                      background: filter === 'daily' ? "#eff6ff" : "transparent",
-                      color: filter === 'daily' ? "#3b82f6" : "#6b7280",
+                      background: "white",
+                      color: "#1f2937",
                       cursor: "pointer",
-                      transition: "all 0.2s"
                     }}
                   >
-                    Daily
-                  </button>
-                  <button
-                    onClick={() => setFilter('weekly')}
-                    style={{
-                      padding: "10px 20px",
-                      fontSize: 14,
-                      fontWeight: 600,
-                      border: filter === 'weekly' ? "2px solid #3b82f6" : "1px solid #e5e7eb",
-                      borderRadius: 10,
-                      background: filter === 'weekly' ? "#eff6ff" : "transparent",
-                      color: filter === 'weekly' ? "#3b82f6" : "#6b7280",
-                      cursor: "pointer",
-                      transition: "all 0.2s"
-                    }}
-                  >
-                    Weekly
-                  </button>
-                  <button
-                    onClick={() => setFilter('monthly')}
-                    style={{
-                      padding: "10px 20px",
-                      fontSize: 14,
-                      fontWeight: 600,
-                      border: filter === 'monthly' ? "2px solid #3b82f6" : "1px solid #e5e7eb",
-                      borderRadius: 10,
-                      background: filter === 'monthly' ? "#eff6ff" : "transparent",
-                      color: filter === 'monthly' ? "#3b82f6" : "#6b7280",
-                      cursor: "pointer",
-                      transition: "all 0.2s"
-                    }}
-                  >
-                    Monthly
-                  </button>
-                  <button
-                    onClick={() => setFilter('yearly')}
-                    style={{
-                      padding: "10px 20px",
-                      fontSize: 14,
-                      fontWeight: 600,
-                      border: filter === 'yearly' ? "2px solid #3b82f6" : "1px solid #e5e7eb",
-                      borderRadius: 10,
-                      background: filter === 'yearly' ? "#eff6ff" : "transparent",
-                      color: filter === 'yearly' ? "#3b82f6" : "#6b7280",
-                      cursor: "pointer",
-                      transition: "all 0.2s"
-                    }}
-                  >
-                    Yearly
-                  </button>
+                    {availableYears.map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ minWidth: 220, paddingBottom: 3 }}>
+                  <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    Showing
+                  </div>
+                  <div style={{ fontSize: 14, color: "#1f2937", fontWeight: 700 }}>
+                    {reportDescription}
+                  </div>
                 </div>
               </div>
 
@@ -449,7 +513,7 @@ export default function IncomePage() {
                   Revenue & Orders Trend
                 </h3>
                 <p style={{ margin: 0, fontSize: 14, color: "#6b7280", fontWeight: 500 }}>
-                  Showing {filter} performance data
+                  {reportDescription}
                 </p>
               </div>
             </div>
@@ -457,7 +521,7 @@ export default function IncomePage() {
             {/* Income Chart */}
             <div style={{ background: "white", padding: 24, borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
               <h3 style={{ margin: "0 0 24px 0", fontSize: 18, fontWeight: 600, color: "#1e293b" }}>
-                Income & Orders Trend ({filter.charAt(0).toUpperCase() + filter.slice(1)})
+                Income & Orders Trend ({selectedFilterLabel} - {selectedPeriodLabel})
               </h3>
 
               {incomeData.length > 0 ? (
@@ -499,27 +563,25 @@ export default function IncomePage() {
                           const maxOrders = Math.max(...incomeData.map(d => d.orderCount), 1);
                           const incomeHeight = (item.income / maxIncome) * 270;
                           const ordersHeight = (item.orderCount / maxOrders) * 270;
-                          const barWidth = 80 / incomeData.length;
                           const groupWidth = 100 / incomeData.length;
-                          const centerOffset = groupWidth / 2;
-                          const spacing = barWidth * 0.15;
+                          const center = idx * groupWidth + groupWidth / 2;
+                          const barWidth = Math.min(4, Math.max(1.2, groupWidth * 0.28));
+                          const spacing = Math.min(1.2, groupWidth * 0.12);
 
                           return (
                             <g
                               key={idx}
-                              onMouseEnter={(e) => {
+                              onMouseEnter={() => {
                                 setHoveredIndex(idx);
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                setTooltipPos({ x: rect.left + rect.width / 2, y: rect.top });
                               }}
                               onMouseLeave={() => setHoveredIndex(null)}
                               style={{ cursor: "pointer" }}
                             >
                               {/* Income Bar (Orange) */}
                               <rect
-                                x={`${idx * groupWidth + centerOffset - barWidth * 0.6}%`}
+                                x={`${center - barWidth - spacing / 2}%`}
                                 y={270 - incomeHeight}
-                                width={`${barWidth * 0.5}%`}
+                                width={`${barWidth}%`}
                                 height={incomeHeight}
                                 fill="#f59e0b"
                                 rx="4"
@@ -528,9 +590,9 @@ export default function IncomePage() {
 
                               {/* Orders Bar (Blue) */}
                               <rect
-                                x={`${idx * groupWidth + centerOffset + spacing}%`}
+                                x={`${center + spacing / 2}%`}
                                 y={270 - ordersHeight}
-                                width={`${barWidth * 0.5}%`}
+                                width={`${barWidth}%`}
                                 height={ordersHeight}
                                 fill="#3b82f6"
                                 rx="4"
@@ -577,10 +639,8 @@ export default function IncomePage() {
                                 cursor: "pointer",
                                 transition: "r 0.2s",
                               }}
-                              onMouseEnter={(e) => {
+                              onMouseEnter={() => {
                                 setHoveredIndex(idx);
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                setTooltipPos({ x: rect.left, y: rect.top });
                               }}
                               onMouseLeave={() => setHoveredIndex(null)}
                             />
@@ -623,11 +683,16 @@ export default function IncomePage() {
 
                     {/* X-axis labels */}
                     <div style={{ display: "flex", justifyContent: "space-around", marginTop: 16, marginLeft: 60, paddingRight: 20 }}>
-                      {incomeData.map((item, idx) => (
-                        <span key={idx} style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, textAlign: "center", flex: 1 }}>
-                          {item.label}
-                        </span>
-                      ))}
+                      {incomeData.map((item, idx) => {
+                        const labelStep = Math.max(1, Math.ceil(incomeData.length / 12));
+                        const showLabel = incomeData.length <= 12 || idx % labelStep === 0 || idx === incomeData.length - 1;
+
+                        return (
+                          <span key={idx} style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, textAlign: "center", flex: 1 }}>
+                            {showLabel ? item.label : ''}
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -686,15 +751,13 @@ export default function IncomePage() {
                         <tr style={{ borderTop: "3px solid #e5e7eb", background: "#f8fafc" }}>
                           <td style={{ padding: "16px", fontWeight: 800, color: "#1f2937", fontSize: 15, borderRight: "1px solid #e5e7eb" }}>TOTAL</td>
                           <td style={{ padding: "16px", textAlign: "right", fontWeight: 800, color: "#10b981", fontSize: 16, borderRight: "1px solid #e5e7eb" }}>
-                            ₱{incomeData.reduce((sum, item) => sum + item.income, 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ₱{periodIncome.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           <td style={{ padding: "16px", textAlign: "right", fontWeight: 800, color: "#3b82f6", fontSize: 16, borderRight: "1px solid #e5e7eb" }}>
-                            {incomeData.reduce((sum, item) => sum + item.orderCount, 0)}
+                            {periodOrderCount}
                           </td>
                           <td style={{ padding: "16px", textAlign: "right", fontWeight: 700, color: "#6b7280", fontSize: 15 }}>
-                            ₱{(incomeData.reduce((sum, item) => sum + item.orderCount, 0) > 0
-                              ? incomeData.reduce((sum, item) => sum + item.income, 0) / incomeData.reduce((sum, item) => sum + item.orderCount, 0)
-                              : 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ₱{averageOrderValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                         </tr>
                       </tfoot>

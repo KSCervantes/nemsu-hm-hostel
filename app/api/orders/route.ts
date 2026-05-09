@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getAllOrders,
   createOrder,
-  getFoodItemsByIds,
 } from "@/lib/firebase-db";
 import { serializeOrder } from "@/lib/firebase";
 import { sendOrderConfirmationEmail, sendOrderPickupConfirmationEmail } from "@/lib/email";
 import { validateOrderInput } from "@/lib/validators";
 import { getOrderTotal } from "@/lib/order-pricing";
+import { resolveOrderItemsFromMenu } from "@/lib/order-items";
+import { processPendingOrderExpirations } from "@/lib/order-expiration";
 
 export async function GET(req: NextRequest) {
   try {
@@ -22,6 +23,18 @@ export async function GET(req: NextRequest) {
     }
 
     console.log("Fetching orders with archived param:", archivedParam);
+
+    if (archived !== true) {
+      const expirationSummary = await processPendingOrderExpirations();
+      if (
+        expirationSummary.warningsSent > 0 ||
+        expirationSummary.autoCancelled > 0 ||
+        expirationSummary.warningFailures > 0 ||
+        expirationSummary.cancellationEmailFailures > 0
+      ) {
+        console.log("Pending order expiration summary:", expirationSummary);
+      }
+    }
 
     const orders = await getAllOrders(archived);
 
@@ -55,7 +68,7 @@ export async function POST(req: NextRequest) {
       address?: string;
       date?: string;
       time?: string;
-      items?: Array<{ foodId: string; name: string; quantity: number; unitPrice: number; notes?: string }>;
+      items?: Array<{ foodId?: string; foodItemId?: string; quantity: number; notes?: string }>;
       orderType?: 'DELIVERY' | 'PICKUP';
     };
 
@@ -69,20 +82,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "items required" }, { status: 400 });
     }
 
-    // Verify all food items exist
-    const foodItemIds = items.map(it => it.foodId);
-    const existingItems = await getFoodItemsByIds(foodItemIds);
-    const existingIds = new Set(existingItems.map(fi => fi.id));
-    const missingIds = foodItemIds.filter(id => !existingIds.has(id));
-
-    if (missingIds.length > 0) {
-      return NextResponse.json({
-        error: `The following food items do not exist: ${missingIds.join(", ")}. Please check the menu.`
-      }, { status: 400 });
+    const resolvedOrderItems = await resolveOrderItemsFromMenu(items);
+    if (resolvedOrderItems.error) {
+      return NextResponse.json({ error: resolvedOrderItems.error }, { status: 400 });
     }
 
     const resolvedOrderType = orderType === "PICKUP" ? "PICKUP" : "DELIVERY";
-    const subtotal = items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0);
+    const subtotal = resolvedOrderItems.items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0);
     const total = getOrderTotal(subtotal, resolvedOrderType);
 
     let desiredAt: Date | null = null;
@@ -92,7 +98,7 @@ export async function POST(req: NextRequest) {
         const dt = new Date(iso);
         if (!isNaN(dt.getTime())) desiredAt = dt;
       }
-    } catch (e) {}
+    } catch {}
 
     const order = await createOrder({
       customer: customer ?? undefined,
@@ -102,7 +108,7 @@ export async function POST(req: NextRequest) {
       desiredAt,
       orderType: resolvedOrderType,
       total,
-      items: items.map((it) => ({
+      items: resolvedOrderItems.items.map((it) => ({
         foodId: it.foodId,
         name: it.name,
         quantity: it.quantity,
@@ -118,7 +124,7 @@ export async function POST(req: NextRequest) {
           customerName: customer || "Guest",
           email: email,
           orderId: order.numericId || 0,
-          items: items.map(it => ({
+          items: resolvedOrderItems.items.map(it => ({
             name: it.name,
             quantity: it.quantity,
             unitPrice: it.unitPrice,
@@ -142,8 +148,11 @@ export async function POST(req: NextRequest) {
         if (!emailResult.success) {
           console.error(`⚠️ Order #${order.numericId} created successfully, but email notification failed:`, emailResult.error);
         }
-      } catch (emailError: any) {
-        console.error(`⚠️ Order #${order.numericId} created successfully, but email notification failed:`, emailError?.message || emailError);
+      } catch (emailError: unknown) {
+        console.error(
+          `⚠️ Order #${order.numericId} created successfully, but email notification failed:`,
+          emailError instanceof Error ? emailError.message : emailError
+        );
       }
     } else {
       console.log(`ℹ️ Order #${order.numericId} created without email notification (no email provided)`);

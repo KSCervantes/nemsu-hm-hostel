@@ -37,6 +37,21 @@ type Order = {
   total: number;
 };
 
+type MenuItemResponse = {
+  id: string;
+  name?: string;
+  price?: string | number;
+  description?: string;
+  img?: string;
+  category?: string;
+  code?: string;
+  available?: boolean;
+};
+
+function isMenuCategory(category: string | undefined): category is MenuItem["category"] {
+  return category === "main" || category === "snacks" || category === "desserts" || category === "drinks";
+}
+
 export default function FoodMenu() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,13 +101,14 @@ export default function FoodMenu() {
     fetch("/api/food-items")
       .then((res) => res.json())
       .then((data) => {
-        const mapped = data.map((item: any) => ({
+        const sourceItems: MenuItemResponse[] = Array.isArray(data) ? data : [];
+        const mapped = sourceItems.map((item) => ({
           id: item.id,
-          name: item.name,
-          price: parseFloat(item.price),
+          name: item.name || "",
+          price: parseFloat(String(item.price ?? 0)),
           description: item.description || "",
           img: item.img || "/img/placeholder.webp",
-          category: item.category || "main",
+          category: isMenuCategory(item.category) ? item.category : "main",
           code: item.code || "",
           available: item.available ?? true,
         }));
@@ -201,7 +217,7 @@ export default function FoodMenu() {
   }, [selected]);
 
   const renderCategory = (categoryName: string, categoryKey: "main" | "snacks" | "desserts" | "drinks", categoryId: string) => (
-    <div id={categoryId} className="relative z-10" style={{ scrollMarginTop: '150px' }}>
+    <div id={categoryId} className="relative z-10 scroll-mt-[150px]">
       <h3 className="text-2xl font-bold text-amber-900 dark:text-amber-600 mb-6 pb-3 border-b-4 border-amber-700 dark:border-amber-500 inline-block drop-shadow-sm">{categoryName}</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
         {filteredMenu.filter((item) => item.category === categoryKey).map((item) => (
@@ -213,7 +229,7 @@ export default function FoodMenu() {
           >
             <div className="relative w-40 shrink-0 overflow-hidden">
               <img src={item.img} alt={item.name} className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-500" />
-              <div className="absolute inset-0 bg-gradient-to-r from-black/0 to-black/20 opacity-80 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="absolute inset-0 bg-linear-to-r from-black/0 to-black/20 opacity-80 group-hover:opacity-100 transition-opacity duration-300" />
               {!item.available && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/60">
                   <span className="bg-red-600 text-white px-2 py-1 rounded-lg font-bold text-sm shadow-lg">
@@ -421,6 +437,7 @@ export default function FoodMenu() {
         <div
           role="dialog"
           aria-modal="true"
+          aria-labelledby="dish-title"
           className="fixed inset-0 z-50 flex items-center justify-center px-4 sm:px-6"
         >
           <div className="absolute inset-0 bg-black/60" onClick={() => setSelected(null)} />
@@ -512,7 +529,7 @@ export default function FoodMenu() {
 
       {/* Order Form Modal */}
       {isOrderFormOpen && (
-        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center px-4 sm:px-6">
+        <div role="dialog" aria-modal="true" aria-labelledby="food-order-form-title" className="fixed inset-0 z-50 flex items-center justify-center px-4 sm:px-6">
           <div className="absolute inset-0 bg-black/60" onClick={() => {
             setIsOrderFormOpen(false);
             setCurrentOrderItems([]);
@@ -520,7 +537,7 @@ export default function FoodMenu() {
 
           <div className="relative max-w-4xl w-full bg-white rounded-xl shadow-xl max-h-[90vh] flex flex-col">
             <div className="p-6 border-b">
-              <h3 className="text-2xl font-bold">Food Order Form{orderType ? ` — ${orderType === 'DELIVERY' ? 'Delivery' : 'Pickup'}` : ''}</h3>
+              <h3 id="food-order-form-title" className="text-2xl font-bold">Food Order Form{orderType ? ` — ${orderType === 'DELIVERY' ? 'Delivery' : 'Pickup'}` : ''}</h3>
             </div>
 
             <div className="overflow-y-auto p-6 flex-1">
@@ -530,10 +547,11 @@ export default function FoodMenu() {
                 <h4 className="text-lg font-semibold mb-3 text-blue-900 dark:text-blue-100">📍 Pickup Location Map</h4>
                 <div className="rounded-lg overflow-hidden h-80 mb-3 border border-blue-200 dark:border-blue-700">
                   <iframe
+                    title="Pickup location map"
                     src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d1500!2d126.093306!3d8.633472!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zOMKwMzgnMDAuNSJOIDEyNsKwMDUnMzUuOSJF!5e0!3m2!1sen!2sph!4v1609459200000!5m2!1sen!2sph"
                     width="100%"
                     height="100%"
-                    style={{ border: 0 }}
+                    className="border-0"
                     allowFullScreen
                     loading="lazy"
                     referrerPolicy="no-referrer-when-downgrade"
@@ -548,28 +566,28 @@ export default function FoodMenu() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-sm font-semibold mb-1">Full Name</label>
-                <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full border px-3 py-2 rounded" />
+                <label htmlFor="food-order-customer-name" className="block text-sm font-semibold mb-1">Full Name</label>
+                <input id="food-order-customer-name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full border px-3 py-2 rounded" />
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-1">Contact Number</label>
-                <input value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} className="w-full border px-3 py-2 rounded" />
+                <label htmlFor="food-order-contact-number" className="block text-sm font-semibold mb-1">Contact Number</label>
+                <input id="food-order-contact-number" value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} className="w-full border px-3 py-2 rounded" />
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-1">Email Address</label>
-                <input value={email} onChange={(e) => setEmail(e.target.value)} className="w-full border px-3 py-2 rounded" />
+                <label htmlFor="food-order-email" className="block text-sm font-semibold mb-1">Email Address</label>
+                <input id="food-order-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full border px-3 py-2 rounded" />
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-1">Preferred {orderType === 'PICKUP' ? 'Pickup' : 'Delivery'} Time</label>
-                <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-full border px-3 py-2 rounded" />
+                <label htmlFor="food-order-time" className="block text-sm font-semibold mb-1">Preferred {orderType === 'PICKUP' ? 'Pickup' : 'Delivery'} Time</label>
+                <input id="food-order-time" type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-full border px-3 py-2 rounded" />
               </div>
               {orderType === 'DELIVERY' && (
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold mb-1">Delivery Address</label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                   <div>
-                    <label className="block text-xs font-medium mb-1">Barangay</label>
-                    <select value={selectedBarangay} onChange={(e) => setSelectedBarangay(e.target.value)} className="w-full border px-3 py-2 rounded">
+                    <label htmlFor="food-order-barangay" className="block text-xs font-medium mb-1">Barangay</label>
+                    <select id="food-order-barangay" value={selectedBarangay} onChange={(e) => setSelectedBarangay(e.target.value)} className="w-full border px-3 py-2 rounded">
                       <option value="">-- Select Barangay --</option>
                       {liangaBarangays.map((b) => (
                         <option key={b.code} value={b.code}>{b.name}</option>
@@ -578,8 +596,8 @@ export default function FoodMenu() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium mb-1">Street Address / House Number / Building Name</label>
-                  <input value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} placeholder="e.g., 123 Main Street, Unit 5B" className="w-full border px-3 py-2 rounded" />
+                  <label htmlFor="food-order-street-address" className="block text-xs font-medium mb-1">Street Address / House Number / Building Name</label>
+                  <input id="food-order-street-address" value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} placeholder="e.g., 123 Main Street, Unit 5B" className="w-full border px-3 py-2 rounded" />
                 </div>
                 <div className="mt-2 p-2 bg-gray-50 rounded border text-sm text-gray-700">
                   <strong>Full Address:</strong> {address || "Please select barangay above"}
@@ -587,8 +605,8 @@ export default function FoodMenu() {
               </div>
               )}
               <div>
-                <label className="block text-sm font-semibold mb-1">Date of Order</label>
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full border px-3 py-2 rounded" />
+                <label htmlFor="food-order-date" className="block text-sm font-semibold mb-1">Date of Order</label>
+                <input id="food-order-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full border px-3 py-2 rounded" />
               </div>
             </div>
 
@@ -598,17 +616,17 @@ export default function FoodMenu() {
               {/* Inline selector to add more items to the order */}
               <div className="flex gap-2 items-end mb-3">
                 <div className="flex-1">
-                  <label className="block text-xs font-medium mb-1">Select Item</label>
-                  <select value={newItemId} onChange={(e) => setNewItemId(e.target.value)} className="w-full border px-2 py-2 rounded">
+                  <label htmlFor="food-order-new-item" className="block text-xs font-medium mb-1">Select Item</label>
+                  <select id="food-order-new-item" value={newItemId} onChange={(e) => setNewItemId(e.target.value)} className="w-full border px-2 py-2 rounded">
                     <option value="">-- Choose a product --</option>
                     {menuItems.map((mi) => (
                       <option key={mi.id} value={String(mi.id)}>{mi.name} — ₱{mi.price}</option>
                     ))}
                   </select>
                 </div>
-                <div style={{width:120}}>
-                  <label className="block text-xs font-medium mb-1">Qty</label>
-                  <input type="number" min={1} value={newItemQty} onChange={(e) => setNewItemQty(Math.max(1, Number(e.target.value || 1)))} className="w-full border px-2 py-2 rounded" />
+                <div className="w-[120px]">
+                  <label htmlFor="food-order-new-item-qty" className="block text-xs font-medium mb-1">Qty</label>
+                  <input id="food-order-new-item-qty" type="number" min={1} value={newItemQty} onChange={(e) => setNewItemQty(Math.max(1, Number(e.target.value || 1)))} className="w-full border px-2 py-2 rounded" />
                 </div>
                 <div>
                   <button
@@ -663,13 +681,13 @@ export default function FoodMenu() {
                         </td>
                         <td className="p-2">{it.name}</td>
                         <td className="p-2">
-                          <input type="number" min={1} value={it.quantity} onChange={(e) => {
+                          <input aria-label={`Quantity for ${it.name}`} type="number" min={1} value={it.quantity} onChange={(e) => {
                             const q = Math.max(1, Number(e.target.value || 1));
                             setCurrentOrderItems((prev) => prev.map((p, i) => i === idx ? { ...p, quantity: q } : p));
                           }} className="w-20 border px-2 py-1 rounded" />
                         </td>
                         <td className="p-2">
-                          <input value={it.notes || ""} onChange={(e) => setCurrentOrderItems((prev) => prev.map((p, i) => i === idx ? { ...p, notes: e.target.value } : p))} className="w-full border px-2 py-1 rounded" />
+                          <input aria-label={`Special instructions for ${it.name}`} value={it.notes || ""} onChange={(e) => setCurrentOrderItems((prev) => prev.map((p, i) => i === idx ? { ...p, notes: e.target.value } : p))} className="w-full border px-2 py-1 rounded" />
                         </td>
                         <td className="p-2">₱{it.price}</td>
                         <td className="p-2 text-center">

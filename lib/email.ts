@@ -22,6 +22,19 @@ function formatOrderId(orderId: number): string {
   return `ORD-${String(orderId).padStart(6, "0")}`;
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getEmailErrorCode(error: unknown): string | undefined {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    return typeof code === "string" ? code : undefined;
+  }
+
+  return undefined;
+}
+
 // Validate email configuration
 function validateEmailConfig() {
   const emailUser = process.env.EMAIL_USER;
@@ -45,6 +58,9 @@ try {
   if (validateEmailConfig()) {
     transporter = nodemailer.createTransport({
       service: "gmail",
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASSWORD,
@@ -52,7 +68,7 @@ try {
     });
 
     // Verify connection on startup
-    transporter.verify((error, success) => {
+    transporter.verify((error) => {
       if (error) {
         console.error("❌ EMAIL TRANSPORTER VERIFICATION FAILED:", error.message);
         console.error("   Common issues:");
@@ -87,6 +103,9 @@ interface OrderEmailData {
   contactNumber: string;
   date?: string;
   time?: string;
+  cancellationReason?: string;
+  hoursUntilCancellation?: number;
+  cancellationDeadline?: string;
 }
 
 export async function sendOrderConfirmationEmail(data: OrderEmailData) {
@@ -226,15 +245,17 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
     const result = await transporter.sendMail(mailOptions);
     console.log(`✅ Order confirmation email sent to ${data.email} for order ${formatOrderId(data.orderId)}`);
     return { success: true, messageId: result.messageId };
-  } catch (error: any) {
-    console.error("❌ Email sending failed:", error.message || error);
-    if (error.code === "EAUTH") {
+  } catch (error: unknown) {
+    const errorMessage = getErrorMessage(error);
+    const errorCode = getEmailErrorCode(error);
+    console.error("❌ Email sending failed:", errorMessage);
+    if (errorCode === "EAUTH") {
       console.error("   Authentication failed - check EMAIL_USER and EMAIL_PASSWORD");
       console.error("   Make sure you're using a Gmail App Password, not your regular password");
-    } else if (error.code === "ECONNECTION") {
+    } else if (errorCode === "ECONNECTION") {
       console.error("   Connection failed - check your internet connection");
     }
-    return { success: false, error: error.message || String(error) };
+    return { success: false, error: errorMessage };
   }
 }
 
@@ -382,9 +403,10 @@ export async function sendOrderPickupConfirmationEmail(data: OrderEmailData) {
     const result = await transporter.sendMail(mailOptions);
     console.log(`✅ Pickup confirmation email sent to ${data.email} for order ${formatOrderId(data.orderId)}`);
     return { success: true, messageId: result.messageId };
-  } catch (error: any) {
-    console.error("❌ Pickup confirmation email failed:", error.message || error);
-    return { success: false, error: error.message || String(error) };
+  } catch (error: unknown) {
+    const errorMessage = getErrorMessage(error);
+    console.error("❌ Pickup confirmation email failed:", errorMessage);
+    return { success: false, error: errorMessage };
   }
 }
 
@@ -548,9 +570,10 @@ export async function sendOrderAcceptedEmail(data: OrderEmailData) {
     const result = await transporter.sendMail(mailOptions);
     console.log(`✅ Order accepted email sent to ${data.email} for order ${formatOrderId(data.orderId)}`);
     return { success: true, messageId: result.messageId };
-  } catch (error: any) {
-    console.error("❌ Order accepted email sending failed:", error.message || error);
-    return { success: false, error: error.message || String(error) };
+  } catch (error: unknown) {
+    const errorMessage = getErrorMessage(error);
+    console.error("❌ Order accepted email sending failed:", errorMessage);
+    return { success: false, error: errorMessage };
   }
 }
 
@@ -701,9 +724,137 @@ export async function sendOrderCompletedEmail(data: OrderEmailData) {
     const result = await transporter.sendMail(mailOptions);
     console.log(`✅ Order completed email sent to ${data.email} for order ${formatOrderId(data.orderId)}`);
     return { success: true, messageId: result.messageId };
-  } catch (error: any) {
-    console.error("❌ Order completed email sending failed:", error.message || error);
-    return { success: false, error: error.message || String(error) };
+  } catch (error: unknown) {
+    const errorMessage = getErrorMessage(error);
+    console.error("❌ Order completed email sending failed:", errorMessage);
+    return { success: false, error: errorMessage };
+  }
+}
+
+export async function sendOrderCancellationWarningEmail(data: OrderEmailData) {
+  const logoBase64 = getLogoBase64();
+  const hoursUntilCancellation = data.hoursUntilCancellation || 12;
+  const cancellationDeadline = data.cancellationDeadline || "soon";
+
+  const itemsHtml = data.items
+    .map(
+      (item) => `
+    <tr>
+      <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${item.name}</td>
+      <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">${item.quantity}</td>
+      <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: right;">&#8369;${item.unitPrice.toFixed(2)}</td>
+      <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: right;">&#8369;${(item.quantity * item.unitPrice).toFixed(2)}</td>
+    </tr>
+    ${item.notes ? `<tr><td colspan="4" style="padding: 5px 10px; font-size: 12px; color: #6b7280; font-style: italic;">Note: ${item.notes}</td></tr>` : ""}
+  `
+    )
+    .join("");
+
+  const mailOptions: nodemailer.SendMailOptions = {
+    from: `"Hotel Management System" <${process.env.EMAIL_USER}>`,
+    to: data.email,
+    subject: `Pending Order Reminder ${formatOrderId(data.orderId)} - Action Needed`,
+    attachments: logoBase64 ? [{
+      filename: "logo.png",
+      content: logoBase64,
+      encoding: "base64",
+      cid: LOGO_CID,
+    }] : [],
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f3f4f6;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+          <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 30px; text-align: center;">
+            <img src="cid:${LOGO_CID}" alt="NEMSU Logo" style="width: 80px; height: 80px; margin-bottom: 15px; border-radius: 50%;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">Pending Order Reminder</h1>
+            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">NEMSU Hostel Kitchen</p>
+          </div>
+
+          <div style="padding: 30px;">
+            <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 18px; margin-bottom: 20px; border-radius: 4px;">
+              <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6;">
+                <strong>Dear ${data.customerName},</strong><br><br>
+                Your order <strong>${formatOrderId(data.orderId)}</strong> is still pending.
+                If it remains pending, the system will automatically cancel it in about
+                <strong>${hoursUntilCancellation} hour${hoursUntilCancellation === 1 ? "" : "s"}</strong>.
+              </p>
+              <p style="margin: 12px 0 0 0; color: #92400e; font-size: 14px; line-height: 1.6;">
+                Cancellation deadline: <strong>${cancellationDeadline}</strong>
+              </p>
+            </div>
+
+            <div style="background-color: #f9fafb; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+              <h2 style="margin: 0 0 15px 0; color: #1f2937; font-size: 20px;">Order Details</h2>
+              <table style="width: 100%; font-size: 14px;">
+                <tr>
+                  <td style="padding: 5px 0; color: #6b7280; font-weight: 600;">Order ID:</td>
+                  <td style="padding: 5px 0; text-align: right;"><span style="background: #f59e0b; color: white; padding: 4px 12px; border-radius: 6px; font-weight: 700; font-size: 13px;">${formatOrderId(data.orderId)}</span></td>
+                </tr>
+                <tr>
+                  <td style="padding: 5px 0; color: #6b7280; font-weight: 600;">Customer Name:</td>
+                  <td style="padding: 5px 0; color: #1f2937; text-align: right;">${data.customerName}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 5px 0; color: #6b7280; font-weight: 600;">Contact Number:</td>
+                  <td style="padding: 5px 0; color: #1f2937; text-align: right;">${data.contactNumber}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 5px 0; color: #6b7280; font-weight: 600;">Address:</td>
+                  <td style="padding: 5px 0; color: #1f2937; text-align: right;">${data.address}</td>
+                </tr>
+              </table>
+            </div>
+
+            <h3 style="margin: 0 0 15px 0; color: #1f2937; font-size: 18px;">Order Items</h3>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+              <thead>
+                <tr style="background-color: #f9fafb;">
+                  <th style="padding: 10px; text-align: left; color: #6b7280; font-weight: 600; font-size: 12px; text-transform: uppercase; border-bottom: 2px solid #e5e7eb;">Item</th>
+                  <th style="padding: 10px; text-align: center; color: #6b7280; font-weight: 600; font-size: 12px; text-transform: uppercase; border-bottom: 2px solid #e5e7eb;">Qty</th>
+                  <th style="padding: 10px; text-align: right; color: #6b7280; font-weight: 600; font-size: 12px; text-transform: uppercase; border-bottom: 2px solid #e5e7eb;">Price</th>
+                  <th style="padding: 10px; text-align: right; color: #6b7280; font-weight: 600; font-size: 12px; text-transform: uppercase; border-bottom: 2px solid #e5e7eb;">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHtml}
+              </tbody>
+            </table>
+
+            <div style="background-color: #fffbeb; padding: 20px; border-radius: 8px; text-align: center;">
+              <p style="margin: 0 0 10px 0; color: #1f2937; font-size: 14px; font-weight: 600;">Please contact us if you still want this order processed.</p>
+              <p style="margin: 0; color: #92400e; font-size: 16px; font-weight: 700;">09222222222</p>
+            </div>
+
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center;">
+              <img src="cid:${LOGO_CID}" alt="NEMSU Logo" style="width: 40px; height: 40px; margin-bottom: 10px; border-radius: 50%;">
+              <p style="margin: 0 0 5px 0; color: #6b7280; font-size: 14px;">NEMSU Hostel - North Eastern Mindanao State University</p>
+              <p style="margin: 0; color: #9ca3af; font-size: 12px;">This is an automated reminder for pending orders.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    if (!transporter) {
+      console.error("❌ Cannot send email: Email transporter not configured");
+      return { success: false, error: "Email transporter not configured" };
+    }
+
+    const result = await transporter.sendMail(mailOptions);
+    console.log(`✅ Pending order warning email sent to ${data.email} for order ${formatOrderId(data.orderId)}`);
+    return { success: true, messageId: result.messageId };
+  } catch (error: unknown) {
+    const errorMessage = getErrorMessage(error);
+    console.error("❌ Pending order warning email failed:", errorMessage);
+    return { success: false, error: errorMessage };
   }
 }
 
@@ -723,6 +874,11 @@ export async function sendOrderCancelledEmail(data: OrderEmailData) {
   `
     )
     .join("");
+
+  const cancellationMessage = data.cancellationReason
+    ? `We regret to inform you that your order <strong>${formatOrderId(data.orderId)}</strong> has been cancelled. ${data.cancellationReason}`
+    : `We regret to inform you that your order <strong>${formatOrderId(data.orderId)}</strong> has been cancelled by our team.
+                This could be due to various reasons such as item availability, delivery constraints, or other operational issues.`;
 
   const mailOptions: nodemailer.SendMailOptions = {
     from: `"Hotel Management System" <${process.env.EMAIL_USER}>`,
@@ -756,8 +912,7 @@ export async function sendOrderCancelledEmail(data: OrderEmailData) {
             <div style="background-color: #fef2f2; border-left: 4px solid #dc2626; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
               <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 1.6;">
                 <strong>Dear ${data.customerName},</strong><br><br>
-                We regret to inform you that your order <strong>${formatOrderId(data.orderId)}</strong> has been cancelled by our team.
-                This could be due to various reasons such as item availability, delivery constraints, or other operational issues.
+                ${cancellationMessage}
               </p>
             </div>
 
@@ -840,8 +995,9 @@ export async function sendOrderCancelledEmail(data: OrderEmailData) {
     const result = await transporter.sendMail(mailOptions);
     console.log(`✅ Order cancelled email sent to ${data.email} for order ${formatOrderId(data.orderId)}`);
     return { success: true, messageId: result.messageId };
-  } catch (error: any) {
-    console.error("❌ Order cancelled email sending failed:", error.message || error);
-    return { success: false, error: error.message || String(error) };
+  } catch (error: unknown) {
+    const errorMessage = getErrorMessage(error);
+    console.error("❌ Order cancelled email sending failed:", errorMessage);
+    return { success: false, error: errorMessage };
   }
 }

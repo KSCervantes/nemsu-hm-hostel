@@ -21,10 +21,102 @@ interface Order {
   orderType?: 'DELIVERY' | 'PICKUP';
 }
 
+type WindowWithWebkitAudio = Window & typeof globalThis & {
+  webkitAudioContext?: typeof AudioContext;
+};
+
+function getStoredLastCheckedOrderId() {
+  if (typeof window === "undefined") return 0;
+
+  const storedLastId = localStorage.getItem("lastCheckedOrderId");
+  return storedLastId ? parseInt(storedLastId, 10) : 0;
+}
+
+function getStoredReadOrderIds() {
+  if (typeof window === "undefined") return new Set<number>();
+
+  const storedReadIds = localStorage.getItem("readOrderIds");
+  if (!storedReadIds) return new Set<number>();
+
+  try {
+    const parsed = JSON.parse(storedReadIds);
+    return Array.isArray(parsed) ? new Set<number>(parsed) : new Set<number>();
+  } catch (error) {
+    console.error("Failed to parse read order IDs:", error);
+    return new Set<number>();
+  }
+}
+
+function UserStarIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M16.051 12.616a1 1 0 0 1 1.909.024l.737 1.452a1 1 0 0 0 .737.535l1.634.256a1 1 0 0 1 .588 1.806l-1.172 1.168a1 1 0 0 0-.282.866l.259 1.613a1 1 0 0 1-1.541 1.134l-1.465-.75a1 1 0 0 0-.912 0l-1.465.75a1 1 0 0 1-1.539-1.133l.258-1.613a1 1 0 0 0-.282-.866l-1.156-1.153a1 1 0 0 1 .572-1.822l1.633-.256a1 1 0 0 0 .737-.535z" />
+      <path d="M8 15H7a4 4 0 0 0-4 4v2" />
+      <circle cx="10" cy="7" r="4" />
+    </svg>
+  );
+}
+
+function ShieldUserIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+      <path d="M6.376 18.91a6 6 0 0 1 11.249.003" />
+      <circle cx="12" cy="11" r="4" />
+    </svg>
+  );
+}
+
+function SettingsIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 // Helper function to play notification sound
 const playNotificationSound = () => {
   try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const AudioContextConstructor =
+      window.AudioContext || (window as WindowWithWebkitAudio).webkitAudioContext;
+    if (!AudioContextConstructor) return;
+
+    const audioContext = new AudioContextConstructor();
     const now = audioContext.currentTime;
 
     // Create a simple beep sound
@@ -54,11 +146,11 @@ export default function AdminHeader({ title, subtitle, breadcrumbs }: AdminHeade
   const dropdownRef = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
   const [newOrders, setNewOrders] = useState<Order[]>([]);
-  const [readOrderIds, setReadOrderIds] = useState<Set<number>>(new Set());
-  const [lastCheckedOrderId, setLastCheckedOrderId] = useState<number>(0);
+  const [readOrderIds, setReadOrderIds] = useState<Set<number>>(getStoredReadOrderIds);
+  const [lastCheckedOrderId, setLastCheckedOrderId] = useState<number>(getStoredLastCheckedOrderId);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | null>(null);
-  const lastCheckedRef = useRef<number>(0);
-  const readOrderIdsRef = useRef<Set<number>>(new Set());
+  const lastCheckedRef = useRef<number>(lastCheckedOrderId);
+  const readOrderIdsRef = useRef<Set<number>>(readOrderIds);
 
   // Calculate unread orders
   const unreadOrders = newOrders.filter(order => !readOrderIds.has(order.numericId));
@@ -69,6 +161,14 @@ export default function AdminHeader({ title, subtitle, breadcrumbs }: AdminHeade
     console.log("🎯 [AdminHeader] newOrders state updated to:", newOrders.length, "unread:", unreadCount);
   }, [newOrders, unreadCount]);
 
+  useEffect(() => {
+    lastCheckedRef.current = lastCheckedOrderId;
+  }, [lastCheckedOrderId]);
+
+  useEffect(() => {
+    readOrderIdsRef.current = readOrderIds;
+  }, [readOrderIds]);
+
   function handleLogout() {
     localStorage.removeItem("admin_token");
     router.push("/admin/login");
@@ -76,28 +176,6 @@ export default function AdminHeader({ title, subtitle, breadcrumbs }: AdminHeade
 
   // Fetch new orders periodically
   useEffect(() => {
-    // Get last checked order ID from localStorage on mount
-    const storedLastId = localStorage.getItem("lastCheckedOrderId");
-    const initialLastId = storedLastId ? parseInt(storedLastId, 10) : 0;
-    setLastCheckedOrderId(initialLastId);
-    lastCheckedRef.current = initialLastId;
-
-    // Load read order IDs from localStorage
-    const storedReadIds = localStorage.getItem("readOrderIds");
-    if (storedReadIds) {
-      try {
-        const parsed = JSON.parse(storedReadIds);
-        if (Array.isArray(parsed)) {
-          const readSet = new Set<number>(parsed);
-          setReadOrderIds(readSet);
-          readOrderIdsRef.current = readSet;
-          console.log("📖 Loaded read order IDs:", parsed);
-        }
-      } catch (e) {
-        console.error("Failed to parse read order IDs:", e);
-      }
-    }
-
     const checkNewOrders = async () => {
       try {
         const res = await fetch("/api/orders?archived=false");
@@ -833,6 +911,9 @@ export default function AdminHeader({ title, subtitle, breadcrumbs }: AdminHeade
               border: "1px solid #e5e7eb",
               background: dropdownOpen ? "#3b82f6" : "#f8fafc",
               color: dropdownOpen ? "#fff" : "#6b7280",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               fontWeight: 700,
               fontSize: 15,
               cursor: "pointer",
@@ -854,7 +935,7 @@ export default function AdminHeader({ title, subtitle, breadcrumbs }: AdminHeade
               }
             }}
           >
-            👤
+            <UserStarIcon size={22} />
           </button>
 
           {dropdownOpen && (
@@ -873,7 +954,20 @@ export default function AdminHeader({ title, subtitle, breadcrumbs }: AdminHeade
             }}
           >
             <div style={{ padding: "16px", borderBottom: "1px solid #e5e7eb", background: "#f8fafc" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#1f2937", marginBottom: 3 }}>👨‍💼 Admin User</div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: "#1f2937",
+                  marginBottom: 3,
+                }}
+              >
+                <UserStarIcon size={18} />
+                <span>Admin User</span>
+              </div>
               <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 500 }}>Administrator</div>
             </div>
 
@@ -901,10 +995,7 @@ export default function AdminHeader({ title, subtitle, breadcrumbs }: AdminHeade
                 onMouseEnter={(e) => (e.currentTarget.style.background = "#f9fafb")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
-                <svg width="18" height="18" fill="currentColor" viewBox="0 0 16 16">
-                  <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
-                  <path fillRule="evenodd" d="M14 14s-1-4-6-4-6 4-6 4 1 1 6 1 6-1 6-1Z" />
-                </svg>
+                <ShieldUserIcon size={18} />
                 <span>Profile</span>
               </button>
 
@@ -931,10 +1022,7 @@ export default function AdminHeader({ title, subtitle, breadcrumbs }: AdminHeade
                 onMouseEnter={(e) => (e.currentTarget.style.background = "#f9fafb")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
-                <svg width="18" height="18" fill="currentColor" viewBox="0 0 16 16">
-                  <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"/>
-                  <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm1.586-4.541a.375.375 0 0 0 0 .75.375.375 0 0 0 0-.75zm-4.348 0a.375.375 0 0 0 0 .75.375.375 0 0 0 0-.75zM4.5 8.75a.375.375 0 1 0 0 .75.375.375 0 0 0 0-.75zm4 0a.375.375 0 1 0 0 .75.375.375 0 0 0 0-.75zm4-4a.375.375 0 1 0 0 .75.375.375 0 0 0 0-.75zM13.914 7.5a.375.375 0 1 0 0 .75.375.375 0 0 0 0-.75zm0 4a.375.375 0 1 0 0 .75.375.375 0 0 0 0-.75zM2 8.75a.375.375 0 1 0 0 .75.375.375 0 0 0 0-.75z"/>
-                </svg>
+                <SettingsIcon size={18} />
                 <span>Settings</span>
               </button>
 

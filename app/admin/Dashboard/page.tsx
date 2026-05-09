@@ -4,13 +4,62 @@ import { useState, useEffect } from "react";
 import Sidebar from "../components/Sidebar";
 import AdminHeader from "../components/AdminHeader";
 import { useRouter } from "next/navigation";
-import { formatDateOnly, toDateObject } from "@/lib/date-utils";
+import { toDateObject } from "@/lib/date-utils";
 
 interface OrderData {
   id: number;
   status: string;
   createdAt: string;
   items: { quantity: number; unitPrice: string }[];
+}
+
+type OrderTrendFilter = "daily" | "7days" | "monthly" | "yearly";
+type OrderTrendPeriod = {
+  date: string;
+  label: string;
+  PENDING: number;
+  ACCEPTED: number;
+  COMPLETED: number;
+  CANCELLED: number;
+};
+
+function PendingIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <g>
+        <path d="M12,2A10,10,0,1,0,22,12,10,10,0,0,0,12,2Zm0,18a8,8,0,1,1,8-8A8,8,0,0,1,12,20Z" />
+        <path d="M12,6a1,1,0,0,0-1,1v4.59L8.29,14.29a1,1,0,1,0,1.41,1.41l3-3A1,1,0,0,0,13,12V7A1,1,0,0,0,12,6Z" />
+      </g>
+    </svg>
+  );
+}
+
+function ClipboardCheckIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+      <path d="m9 14 2 2 4-4" />
+    </svg>
+  );
 }
 
 export default function AdminDashboard() {
@@ -23,9 +72,9 @@ export default function AdminDashboard() {
     dailyRevenue: [] as { date: string; revenue: number }[],
     totalRevenue: 0,
   });
-  const [orderFilter, setOrderFilter] = useState<'daily' | '7days' | 'monthly'>('7days');
-  const [filteredOrders, setFilteredOrders] = useState<{ date: string; label: string; PENDING: number; ACCEPTED: number; COMPLETED: number; CANCELLED: number }[]>([]);
+  const [orderFilter, setOrderFilter] = useState<OrderTrendFilter>('7days');
   const [hoveredChart, setHoveredChart] = useState<{ chart: string; index: number } | null>(null);
+  const filteredOrders = calculateFilteredOrders(orders, orderFilter);
 
   const navItems = [
     { label: "Dashboard", href: "/admin/Dashboard" },
@@ -40,7 +89,7 @@ export default function AdminDashboard() {
     let hasToken = false;
     try {
       hasToken = Boolean(localStorage.getItem("admin_token"));
-    } catch (e) {
+    } catch {
       hasToken = false;
     }
     if (!hasToken) {
@@ -83,7 +132,7 @@ export default function AdminDashboard() {
   }, [router]);
 
   // Function to calculate filtered orders based on selected time period
-  const calculateFilteredOrders = (data: OrderData[], filter: 'daily' | '7days' | 'monthly') => {
+  function calculateFilteredOrders(data: OrderData[], filter: OrderTrendFilter): OrderTrendPeriod[] {
     const today = new Date();
     let periods: string[] = [];
     let formatLabel: (date: string) => string;
@@ -91,7 +140,7 @@ export default function AdminDashboard() {
     if (filter === 'daily') {
       // Show today only
       periods = [today.toISOString().split('T')[0]];
-      formatLabel = (date: string) => 'Today';
+      formatLabel = () => 'Today';
     } else if (filter === '7days') {
       // Last 7 days
       periods = Array.from({ length: 7 }, (_, i) => {
@@ -103,7 +152,7 @@ export default function AdminDashboard() {
         const d = new Date(date);
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       };
-    } else {
+    } else if (filter === 'monthly') {
       // Last 12 months
       periods = Array.from({ length: 12 }, (_, i) => {
         const d = new Date(today.getFullYear(), today.getMonth() - (11 - i), 1);
@@ -114,6 +163,10 @@ export default function AdminDashboard() {
         const d = new Date(parseInt(year), parseInt(month) - 1);
         return d.toLocaleDateString('en-US', { month: 'short' });
       };
+    } else {
+      // Last 5 years
+      periods = Array.from({ length: 5 }, (_, i) => String(today.getFullYear() - (4 - i)));
+      formatLabel = (date: string) => date;
     }
 
     const filtered = periods.map((period) => {
@@ -123,8 +176,8 @@ export default function AdminDashboard() {
         if (!dateObj) return false;
         const dateStr = dateObj.toISOString().split('T')[0]; // YYYY-MM-DD format
 
-        if (filter === 'monthly') {
-          return dateStr.startsWith(period); // period is YYYY-MM
+        if (filter === 'monthly' || filter === 'yearly') {
+          return dateStr.startsWith(period); // period is YYYY-MM or YYYY
         }
         return dateStr.startsWith(period); // period is YYYY-MM-DD
       });
@@ -141,13 +194,21 @@ export default function AdminDashboard() {
       return statusBreakdown;
     });
 
-    setFilteredOrders(filtered);
+    return filtered;
+  }
+
+  const handleFilterChange = (filter: OrderTrendFilter) => {
+    setOrderFilter(filter);
   };
 
-  const handleFilterChange = (filter: 'daily' | '7days' | 'monthly') => {
-    setOrderFilter(filter);
-    calculateFilteredOrders(orders, filter);
-  };
+  const formatCurrency = (value: number) =>
+    `\u20b1${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const formatCompactCurrency = (value: number) =>
+    `\u20b1${new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
+
+  const maxDailyRevenue = Math.max(...chartData.dailyRevenue.map((day) => day.revenue), 1);
+  const revenueTicks = [1, 0.75, 0.5, 0.25, 0].map((ratio) => maxDailyRevenue * ratio);
 
   return (
     <div style={{ fontFamily: "system-ui,Segoe UI,Roboto,Helvetica,Arial", padding: 0, background: "#f8fafc", minHeight: "100vh" }}>
@@ -161,58 +222,120 @@ export default function AdminDashboard() {
           {/* Summary Stats Cards */}
           <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 20, marginBottom: 32 }}>
             {/* Total Orders Card - Primary */}
-            <div style={{
+            <button type="button" onClick={() => router.push("/admin/orders")} style={{
               background: "#ffffff",
               padding: 28,
               borderRadius: 14,
               border: "2px solid #e5e7eb",
               boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
               position: "relative",
-              overflow: "hidden"
-            }}>
+              overflow: "hidden",
+              cursor: "pointer",
+              textAlign: "left",
+              font: "inherit",
+              transition: "transform 180ms ease, box-shadow 180ms ease"
+            }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-3px)";
+                e.currentTarget.style.boxShadow = "0 10px 24px rgba(59, 130, 246, 0.14)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)";
+              }}
+              aria-label={`View all ${stats.orders} orders`}
+            >
               <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>Total Orders</div>
               <div style={{ fontSize: 36, fontWeight: 800, color: "#3b82f6", marginBottom: 8 }}>{stats.orders}</div>
               <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 500 }}>All-time orders placed</div>
-            </div>
+            </button>
 
             {/* Completed Orders - Success State */}
-            <div style={{
+            <button type="button" onClick={() => router.push("/admin/Completed")} style={{
               background: "linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)",
               padding: 28,
               borderRadius: 14,
               border: "2px solid #10b981",
-              boxShadow: "0 4px 12px rgba(16, 185, 129, 0.15)"
-            }}>
+              boxShadow: "0 4px 12px rgba(16, 185, 129, 0.15)",
+              cursor: "pointer",
+              textAlign: "left",
+              font: "inherit",
+              transition: "transform 180ms ease, box-shadow 180ms ease"
+            }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-3px)";
+                e.currentTarget.style.boxShadow = "0 10px 24px rgba(16, 185, 129, 0.2)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 4px 12px rgba(16, 185, 129, 0.15)";
+              }}
+              aria-label={`View ${chartData.statusCounts.COMPLETED} completed orders`}
+            >
               <div style={{ fontSize: 13, color: "#047857", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>✓ Completed</div>
               <div style={{ fontSize: 36, fontWeight: 800, color: "#059669", marginBottom: 8 }}>{chartData.statusCounts.COMPLETED}</div>
               <div style={{ fontSize: 12, color: "#047857", fontWeight: 500 }}>Successfully completed</div>
-            </div>
+            </button>
 
             {/* Pending Orders - Warning State */}
-            <div style={{
+            <button type="button" onClick={() => router.push("/admin/orders?status=PENDING")} style={{
               background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
               padding: 28,
               borderRadius: 14,
               border: "2px solid #f59e0b",
-              boxShadow: "0 4px 12px rgba(245, 158, 11, 0.15)"
-            }}>
-              <div style={{ fontSize: 13, color: "#92400e", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>⏳ Pending</div>
+              boxShadow: "0 4px 12px rgba(245, 158, 11, 0.15)",
+              cursor: "pointer",
+              textAlign: "left",
+              font: "inherit",
+              transition: "transform 180ms ease, box-shadow 180ms ease"
+            }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-3px)";
+                e.currentTarget.style.boxShadow = "0 10px 24px rgba(245, 158, 11, 0.22)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 4px 12px rgba(245, 158, 11, 0.15)";
+              }}
+              aria-label={`View ${chartData.statusCounts.PENDING} pending orders`}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: "#92400e", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                <PendingIcon size={16} />
+                <span>Pending</span>
+              </div>
               <div style={{ fontSize: 36, fontWeight: 800, color: "#d97706", marginBottom: 8 }}>{chartData.statusCounts.PENDING}</div>
               <div style={{ fontSize: 12, color: "#92400e", fontWeight: 500 }}>Awaiting confirmation</div>
-            </div>
+            </button>
 
             {/* Accepted Orders - Active State */}
-            <div style={{
+            <button type="button" onClick={() => router.push("/admin/orders?status=ACCEPTED")} style={{
               background: "linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%)",
               padding: 28,
               borderRadius: 14,
               border: "2px solid #3b82f6",
-              boxShadow: "0 4px 12px rgba(59, 130, 246, 0.15)"
-            }}>
-              <div style={{ fontSize: 13, color: "#1e40af", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>→ Accepted</div>
+              boxShadow: "0 4px 12px rgba(59, 130, 246, 0.15)",
+              cursor: "pointer",
+              textAlign: "left",
+              font: "inherit",
+              transition: "transform 180ms ease, box-shadow 180ms ease"
+            }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-3px)";
+                e.currentTarget.style.boxShadow = "0 10px 24px rgba(59, 130, 246, 0.2)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 4px 12px rgba(59, 130, 246, 0.15)";
+              }}
+              aria-label={`View ${chartData.statusCounts.ACCEPTED} accepted orders`}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: "#1e40af", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                <ClipboardCheckIcon size={16} />
+                <span>Accepted</span>
+              </div>
               <div style={{ fontSize: 36, fontWeight: 800, color: "#2563eb", marginBottom: 8 }}>{chartData.statusCounts.ACCEPTED}</div>
               <div style={{ fontSize: 12, color: "#1e40af", fontWeight: 500 }}>In preparation</div>
-            </div>
+            </button>
           </section>
 
           {/* Analytics Charts */}
@@ -365,7 +488,7 @@ export default function AdminDashboard() {
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
                 <div></div>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
                   <button
                     onClick={() => handleFilterChange('daily')}
                     style={{
@@ -414,10 +537,26 @@ export default function AdminDashboard() {
                   >
                     Monthly
                   </button>
+                  <button
+                    onClick={() => handleFilterChange('yearly')}
+                    style={{
+                      padding: "10px 20px",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      border: orderFilter === 'yearly' ? "2px solid #3b82f6" : "1px solid #e5e7eb",
+                      borderRadius: 10,
+                      background: orderFilter === 'yearly' ? "#eff6ff" : "white",
+                      color: orderFilter === 'yearly' ? "#3b82f6" : "#6b7280",
+                      cursor: "pointer",
+                      transition: "all 0.2s"
+                    }}
+                  >
+                    Yearly
+                  </button>
                 </div>
                 <div></div>
               </div>
-              <div style={{ display: "flex", alignItems: "flex-end", gap: orderFilter === 'monthly' ? 8 : 12, height: 220, justifyContent: "space-around", padding: "0 8px", marginTop: 20, position: "relative" }}>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: orderFilter === 'monthly' ? 8 : orderFilter === 'yearly' ? 14 : 12, height: 220, justifyContent: "space-around", padding: "0 8px", marginTop: 20, position: "relative" }}>
                 {filteredOrders.map((period, idx) => {
                   const maxCount = Math.max(...filteredOrders.map((p) => p.PENDING + p.ACCEPTED + p.COMPLETED + p.CANCELLED), 1);
                   const statuses = [
@@ -515,93 +654,148 @@ export default function AdminDashboard() {
               <h3 style={{ margin: "0 0 6px 0", fontSize: 18, fontWeight: 700, color: "#1f2937" }}>Revenue Performance</h3>
               <p style={{ margin: 0, fontSize: 14, color: "#6b7280", fontWeight: 500 }}>Daily income tracking</p>
             </div>
-            <div style={{ position: "relative", height: 200 }}>
+            <div style={{ position: "relative", height: 250 }}>
               {chartData.dailyRevenue.length > 0 ? (
-                <>
-                  <svg width="100%" height="200" style={{ overflow: "visible" }} viewBox="0 0 100 200" preserveAspectRatio="none">
-                    {/* Grid lines */}
-                    {[0, 1, 2, 3, 4].map((i) => (
-                      <line
-                        key={i}
-                        x1="0"
-                        y1={i * 40}
-                        x2="100"
-                        y2={i * 40}
-                        stroke="#f1f5f9"
-                        strokeWidth="0.3"
-                        vectorEffect="non-scaling-stroke"
+                <div style={{ position: "relative", height: "100%", padding: "8px 0 32px 58px", boxSizing: "border-box" }}>
+                  <div style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 8,
+                    bottom: 32,
+                    width: 46,
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    alignItems: "flex-end",
+                  }}>
+                    {revenueTicks.map((tick, idx) => (
+                      <span key={idx} style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700 }}>
+                        {formatCompactCurrency(tick)}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div style={{
+                    position: "absolute",
+                    left: 58,
+                    right: 0,
+                    top: 8,
+                    bottom: 32,
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    pointerEvents: "none",
+                  }}>
+                    {revenueTicks.map((_, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          height: 1,
+                          background: idx === revenueTicks.length - 1 ? "#cbd5e1" : "#eef2f7",
+                        }}
                       />
                     ))}
-                    {/* Revenue line (green) */}
-                    <polyline
-                      points={chartData.dailyRevenue.map((day, idx) => {
-                        const x = (idx / Math.max(chartData.dailyRevenue.length - 1, 1)) * 100;
-                        const maxRevenue = Math.max(...chartData.dailyRevenue.map(d => d.revenue), 1);
-                        const y = 180 - ((day.revenue / maxRevenue) * 160);
-                        return `${x},${y}`;
-                      }).join(" ")}
-                      fill="none"
-                      stroke="#10b981"
-                      strokeWidth="0.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      vectorEffect="non-scaling-stroke"
-                    />
+                  </div>
 
-                    {/* Data points with hover */}
+                  <div style={{
+                    position: "relative",
+                    display: "grid",
+                    gridTemplateColumns: `repeat(${chartData.dailyRevenue.length}, minmax(42px, 1fr))`,
+                    gap: 14,
+                    height: "100%",
+                    zIndex: 1,
+                  }}>
                     {chartData.dailyRevenue.map((day, idx) => {
-                      const x = (idx / Math.max(chartData.dailyRevenue.length - 1, 1)) * 100;
-                      const maxRevenue = Math.max(...chartData.dailyRevenue.map(d => d.revenue), 1);
-                      const y = 180 - ((day.revenue / maxRevenue) * 160);
+                      const percentage = maxDailyRevenue > 0 ? (day.revenue / maxDailyRevenue) * 100 : 0;
+                      const isHovered = hoveredChart?.chart === "revenue" && hoveredChart.index === idx;
+                      const hasRevenue = day.revenue > 0;
+
                       return (
-                        <circle
+                        <div
                           key={idx}
-                          cx={x}
-                          cy={y}
-                          r="1.2"
-                          fill="#10b981"
-                          vectorEffect="non-scaling-stroke"
-                          style={{ cursor: "pointer" }}
-                          onMouseEnter={() => setHoveredChart({ chart: "revenue", index: idx })}
-                          onMouseLeave={() => setHoveredChart(null)}
-                        />
+                          style={{
+                            position: "relative",
+                            minWidth: 0,
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "flex-end",
+                          }}
+                        >
+                          {isHovered && (
+                            <div style={{
+                              position: "absolute",
+                              top: -6,
+                              left: "50%",
+                              transform: "translate(-50%, -100%)",
+                              background: "#0f172a",
+                              color: "white",
+                              padding: "8px 10px",
+                              borderRadius: 8,
+                              fontSize: 12,
+                              fontWeight: 700,
+                              whiteSpace: "nowrap",
+                              zIndex: 3,
+                              boxShadow: "0 10px 24px rgba(15, 23, 42, 0.22)",
+                            }}>
+                              {formatCurrency(day.revenue)}
+                            </div>
+                          )}
+
+                          <div style={{
+                            flex: 1,
+                            width: "100%",
+                            display: "flex",
+                            alignItems: "flex-end",
+                            justifyContent: "center",
+                            paddingTop: 14,
+                          }}>
+                            <button
+                              type="button"
+                              aria-label={`Revenue for ${new Date(day.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}: ${formatCurrency(day.revenue)}`}
+                              onMouseEnter={() => setHoveredChart({ chart: "revenue", index: idx })}
+                              onMouseLeave={() => setHoveredChart(null)}
+                              style={{
+                                width: "min(54px, 72%)",
+                                height: hasRevenue ? `${Math.max(percentage, 8)}%` : 4,
+                                border: 0,
+                                borderRadius: hasRevenue ? "10px 10px 4px 4px" : 999,
+                                background: hasRevenue
+                                  ? "linear-gradient(180deg, #34d399 0%, #10b981 52%, #059669 100%)"
+                                  : "#e2e8f0",
+                                boxShadow: hasRevenue
+                                  ? "0 12px 22px rgba(16, 185, 129, 0.22)"
+                                  : "none",
+                                cursor: "pointer",
+                                transform: isHovered ? "translateY(-4px)" : "translateY(0)",
+                                transition: "height 0.25s ease, transform 0.2s ease, box-shadow 0.2s ease",
+                              }}
+                            />
+                          </div>
+
+                          <div style={{
+                            height: 28,
+                            display: "flex",
+                            alignItems: "flex-end",
+                            justifyContent: "center",
+                            fontSize: 11,
+                            color: "#64748b",
+                            fontWeight: 700,
+                            textAlign: "center",
+                            whiteSpace: "nowrap",
+                          }}>
+                            {new Date(day.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </div>
+                        </div>
                       );
                     })}
-                  </svg>
-
-                  {/* Tooltip for Revenue */}
-                  {hoveredChart?.chart === "revenue" && hoveredChart.index !== undefined && (
-                    <div style={{
-                      position: "absolute",
-                      top: -50,
-                      left: `${(hoveredChart.index / Math.max(chartData.dailyRevenue.length - 1, 1)) * 100}%`,
-                      transform: "translateX(-50%)",
-                      background: "#1e293b",
-                      color: "white",
-                      padding: "8px 12px",
-                      borderRadius: 6,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
-                      zIndex: 10,
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                    }}>
-                      ₱{chartData.dailyRevenue[hoveredChart.index]?.revenue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                  )}
-                </>
+                  </div>
+                </div>
               ) : (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#94a3b8", fontSize: 14 }}>
                   No revenue data available
                 </div>
               )}
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, paddingLeft: 8, paddingRight: 8 }}>
-              {chartData.dailyRevenue.map((day, idx) => (
-                <span key={idx} style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500, textAlign: "center", flex: 1 }}>
-                  {new Date(day.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                </span>
-              ))}
             </div>
             <div style={{ marginTop: 24, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
               <div style={{ padding: 20, background: "#f8fafc", borderRadius: 12, border: "1px solid #e5e7eb" }}>
@@ -624,37 +818,6 @@ export default function AdminDashboard() {
           </div>
           </div>
         </main>
-      </div>
-    </div>
-  );
-}
-
-function StatCard({ label, value, icon }: { label: string; value: number | string; icon?: string; gradient?: string }) {
-  return (
-    <div style={{
-      background: "#ffffff",
-      padding: 28,
-      borderRadius: 14,
-      minWidth: 200,
-      border: "1px solid #e5e7eb",
-      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.06)"
-    }}>
-      <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</div>
-      <div style={{ fontSize: 32, fontWeight: 800, color: "#3b82f6" }}>{value}</div>
-    </div>
-  );
-}
-
-function BarItem({ label, value, max, color }: { label: string; value: number; max: number; color: string; emoji?: string }) {
-  const percentage = max > 0 ? (value / max) * 100 : 0;
-  return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <span style={{ fontWeight: 500, fontSize: 14, color: "#475569" }}>{label}</span>
-        <span style={{ color: "#64748b", fontWeight: 600, fontSize: 14 }}>{value}</span>
-      </div>
-      <div style={{ background: "#f1f5f9", borderRadius: 4, height: 8, overflow: "hidden" }}>
-        <div style={{ width: `${percentage}%`, height: "100%", background: color, borderRadius: 4 }} />
       </div>
     </div>
   );

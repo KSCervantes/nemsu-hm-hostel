@@ -3,10 +3,10 @@ import {
   getOrderById,
   updateOrder,
   updateOrderItems,
-  deleteOrder,
 } from "@/lib/firebase-db";
-import { toDate, serializeOrder } from "@/lib/firebase";
+import { toDate, serializeOrder, type Order } from "@/lib/firebase";
 import { sendOrderAcceptedEmail, sendOrderCompletedEmail, sendOrderCancelledEmail } from "@/lib/email";
+import { resolveOrderItemsFromMenu } from "@/lib/order-items";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -19,7 +19,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!existing) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
 
     // Prepare update data
-    const updateData: any = {};
+    const updateData: Partial<Order> = {};
     if (status) {
       updateData.status = status;
     }
@@ -42,14 +42,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     // If items present, sync them
     if (Array.isArray(items)) {
-      await updateOrderItems(id, items.map((it: any) => ({
-        id: it.id,
-        foodId: it.foodId,
-        name: it.name,
-        quantity: Number(it.quantity || 0),
-        unitPrice: Number(it.unitPrice || 0),
-        notes: it.notes ?? undefined,
-      })));
+      const resolvedOrderItems = await resolveOrderItemsFromMenu(items);
+      if (resolvedOrderItems.error) {
+        return NextResponse.json({ error: resolvedOrderItems.error }, { status: 400 });
+      }
+
+      await updateOrderItems(id, resolvedOrderItems.items);
     }
 
     // Re-fetch updated order
@@ -58,7 +56,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Send notifications based on status
     if (status === 'ACCEPTED' && order?.email) {
       try {
-        const desiredDate = order.desiredAt ? toDate(order.desiredAt as any) : null;
+        const desiredDate = order.desiredAt ? toDate(order.desiredAt) : null;
         await sendOrderAcceptedEmail({
           customerName: order.customer || 'Guest',
           email: order.email,
@@ -75,7 +73,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     if (status === 'COMPLETED' && order?.email) {
       try {
-        const desiredDate = order.desiredAt ? toDate(order.desiredAt as any) : null;
+        const desiredDate = order.desiredAt ? toDate(order.desiredAt) : null;
         await sendOrderCompletedEmail({
           customerName: order.customer || 'Guest',
           email: order.email,
@@ -92,7 +90,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     if (status === 'CANCELLED' && order?.email) {
       try {
-        const desiredDate = order.desiredAt ? toDate(order.desiredAt as any) : null;
+        const desiredDate = order.desiredAt ? toDate(order.desiredAt) : null;
         await sendOrderCancelledEmail({
           customerName: order.customer || 'Guest',
           email: order.email,
@@ -108,7 +106,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     return NextResponse.json(order ? serializeOrder(order) : null);
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('Order update error:', e);
     return NextResponse.json({ error: 'Failed to update order' }, { status: 500 });
   }
@@ -142,7 +140,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     // Send cancellation email if email is provided
     if (order.email) {
       try {
-        const desiredDate = order.desiredAt ? toDate(order.desiredAt as any) : null;
+        const desiredDate = order.desiredAt ? toDate(order.desiredAt) : null;
         await sendOrderCancelledEmail({
           customerName: order.customer || "Guest",
           email: order.email,
@@ -165,7 +163,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
 
     return NextResponse.json({ success: true });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("Order delete error:", e);
     return NextResponse.json({ error: "Failed to delete order" }, { status: 500 });
   }

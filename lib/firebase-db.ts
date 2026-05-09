@@ -12,12 +12,9 @@ import {
   orderBy,
   Timestamp,
   writeBatch,
-  runTransaction,
-  setDoc,
   getNextId,
   toDate,
   toTimestamp,
-  serializeOrder,
   COLLECTIONS,
   AdminUser,
   FoodItem,
@@ -25,7 +22,6 @@ import {
   OrderItem,
   Reservation,
   AuditLog,
-  AppSettings,
   OrderStatus,
   OrderType,
 } from "./firebase";
@@ -317,7 +313,9 @@ export async function getAllOrders(archived?: boolean): Promise<Order[]> {
       return {
         id: item.id,
         ...itemData,
+        name: foodItem?.name || itemData.name,
         img: foodItem?.img || null, // Include food item image
+        menuItemMissing: Boolean(itemData.foodId && !foodItem),
       } as OrderItem;
     });
     orders.push(orderData);
@@ -362,7 +360,9 @@ export async function getOrderById(id: string): Promise<Order | null> {
     return {
       id: item.id,
       ...itemData,
+      name: foodItem?.name || itemData.name,
       img: foodItem?.img || null, // Include food item image
+      menuItemMissing: Boolean(itemData.foodId && !foodItem),
     } as OrderItem;
   });
 
@@ -465,7 +465,7 @@ export async function updateOrder(id: string, data: Partial<Order>): Promise<Ord
 
   if (!docSnap.exists()) return null;
 
-  const updateData: any = { ...data };
+  const updateData: Record<string, unknown> = { ...data };
   delete updateData.id;
   delete updateData.items;
   delete updateData.createdAt;
@@ -480,15 +480,37 @@ export async function updateOrder(id: string, data: Partial<Order>): Promise<Ord
   if (data.desiredAt) {
     const desiredAtValue = data.desiredAt instanceof Date
       ? data.desiredAt
-      : (data.desiredAt as any).toDate?.() || data.desiredAt;
+      : data.desiredAt instanceof Timestamp
+        ? data.desiredAt.toDate()
+        : data.desiredAt;
     updateData.desiredAt = toTimestamp(desiredAtValue);
   }
 
   if (data.archivedAt) {
     const archivedAtValue = data.archivedAt instanceof Date
       ? data.archivedAt
-      : (data.archivedAt as any).toDate?.() || data.archivedAt;
+      : data.archivedAt instanceof Timestamp
+        ? data.archivedAt.toDate()
+        : data.archivedAt;
     updateData.archivedAt = toTimestamp(archivedAtValue);
+  }
+
+  if (data.pendingCancellationWarningSentAt) {
+    const warningSentAtValue = data.pendingCancellationWarningSentAt instanceof Date
+      ? data.pendingCancellationWarningSentAt
+      : data.pendingCancellationWarningSentAt instanceof Timestamp
+        ? data.pendingCancellationWarningSentAt.toDate()
+        : data.pendingCancellationWarningSentAt;
+    updateData.pendingCancellationWarningSentAt = toTimestamp(warningSentAtValue);
+  }
+
+  if (data.autoCancelledAt) {
+    const autoCancelledAtValue = data.autoCancelledAt instanceof Date
+      ? data.autoCancelledAt
+      : data.autoCancelledAt instanceof Timestamp
+        ? data.autoCancelledAt.toDate()
+        : data.autoCancelledAt;
+    updateData.autoCancelledAt = toTimestamp(autoCancelledAtValue);
   }
 
   await updateDoc(docRef, updateData);
@@ -533,6 +555,7 @@ export async function updateOrderItems(
       // Update existing item
       const itemRef = doc(db, COLLECTIONS.ORDER_ITEMS, item.id);
       batch.update(itemRef, {
+        ...(item.foodId ? { foodId: item.foodId } : {}),
         name: item.name,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
@@ -542,6 +565,7 @@ export async function updateOrderItems(
       resultItems.push({
         id: item.id,
         orderId,
+        foodId: item.foodId,
         name: item.name,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
@@ -656,7 +680,7 @@ const defaultSettings = {
   sessionTimeout: "30",
 };
 
-export async function getAppSettings(): Promise<Record<string, any>> {
+export async function getAppSettings(): Promise<Record<string, unknown>> {
   const q = query(collection(db, COLLECTIONS.APP_SETTINGS));
   const snapshot = await getDocs(q);
 
@@ -675,7 +699,7 @@ export async function getAppSettings(): Promise<Record<string, any>> {
   return docData.settings || defaultSettings;
 }
 
-export async function updateAppSettings(settings: Record<string, any>): Promise<Record<string, any>> {
+export async function updateAppSettings<T extends object>(settings: T): Promise<T> {
   const q = query(collection(db, COLLECTIONS.APP_SETTINGS));
   const snapshot = await getDocs(q);
 

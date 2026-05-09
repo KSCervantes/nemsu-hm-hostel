@@ -1,19 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "../components/Sidebar";
 import AdminHeader from "../components/AdminHeader";
+import PageSearch from "../components/PageSearch";
 import Swal from "sweetalert2";
 import { formatDate, formatDateOnly, toDateObject } from "@/lib/date-utils";
 
 type OrderItem = {
   id: number;
+  foodId?: string;
   name: string;
   quantity: number;
   unitPrice: string;
   lineTotal: string;
   notes?: string;
+  menuItemMissing?: boolean;
 };
 
 type Order = {
@@ -33,16 +36,136 @@ type Order = {
 
 type FilterType = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'all';
 
+type DateRange = {
+  start: Date;
+  end: Date;
+  label: string;
+};
+
+const monthOptions = Array.from({ length: 12 }, (_, month) => ({
+  value: month,
+  label: new Date(2024, month, 1).toLocaleDateString('en-US', { month: 'long' }),
+}));
+
+const filterOptions: { value: FilterType; label: string }[] = [
+  { value: 'all', label: 'All Time' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly', label: 'Yearly' },
+];
+
+function getDaysInMonth(year: number, month: number) {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function getWeeksInMonth(year: number, month: number): DateRange[] {
+  const monthStart = new Date(year, month, 1, 0, 0, 0, 0);
+  const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
+  const weeks: DateRange[] = [];
+  let weekStart = new Date(monthStart);
+
+  while (weekStart <= monthEnd) {
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+    if (weekEnd > monthEnd) {
+      weekEnd.setTime(monthEnd.getTime());
+    }
+
+    weeks.push({
+      start: new Date(weekStart),
+      end: new Date(weekEnd),
+      label: `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
+    });
+
+    weekStart = new Date(weekEnd);
+    weekStart.setDate(weekStart.getDate() + 1);
+    weekStart.setHours(0, 0, 0, 0);
+  }
+
+  return weeks;
+}
+
+function getSelectedDateRange(
+  filterType: FilterType,
+  selectedYear: number,
+  selectedMonth: number,
+  selectedDay: number,
+  selectedWeek: number
+): DateRange | null {
+  if (filterType === 'all') {
+    return null;
+  }
+
+  if (filterType === 'daily') {
+    const date = new Date(selectedYear, selectedMonth, selectedDay, 0, 0, 0, 0);
+    return {
+      start: date,
+      end: new Date(selectedYear, selectedMonth, selectedDay, 23, 59, 59, 999),
+      label: date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+    };
+  }
+
+  if (filterType === 'weekly') {
+    const weeks = getWeeksInMonth(selectedYear, selectedMonth);
+    return weeks[selectedWeek] || weeks[0] || null;
+  }
+
+  if (filterType === 'monthly') {
+    const start = new Date(selectedYear, selectedMonth, 1, 0, 0, 0, 0);
+    return {
+      start,
+      end: new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59, 999),
+      label: start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    };
+  }
+
+  return {
+    start: new Date(selectedYear, 0, 1, 0, 0, 0, 0),
+    end: new Date(selectedYear, 11, 31, 23, 59, 59, 999),
+    label: selectedYear.toString(),
+  };
+}
+
+function getReportScope(filterType: FilterType, range: DateRange | null) {
+  if (filterType === 'all' || !range) {
+    return 'All completed orders';
+  }
+
+  return `${filterOptions.find((option) => option.value === filterType)?.label ?? 'Selected'} view for ${range.label}`;
+}
+
+function getFilenameScope(filterType: FilterType, range: DateRange | null) {
+  if (filterType === 'all' || !range) {
+    return 'all-time';
+  }
+
+  return `${filterType}-${range.label}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+function getItemDisplayName(item: OrderItem) {
+  return item.menuItemMissing ? "Removed menu item" : item.name;
+}
+
+function getItemAuditNote(item: OrderItem) {
+  return item.menuItemMissing ? `Saved as: ${item.name}` : item.notes ? `Note: ${item.notes}` : "";
+}
+
 export default function CompletedPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<FilterType>('all');
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
+  const [selectedDay, setSelectedDay] = useState(() => new Date().getDate());
+  const [selectedWeek, setSelectedWeek] = useState(0);
 
   const navItems = [
     { label: "Dashboard", href: "/admin/Dashboard" },
@@ -53,27 +176,48 @@ export default function CompletedPage() {
     { label: "Income", href: "/admin/Income" },
   ];
 
-  useEffect(() => {
-    let hasToken = false;
-    try {
-      hasToken = Boolean(localStorage.getItem("admin_token"));
-    } catch (e) {
-      hasToken = false;
+  function updateSearchTerm(value: string) {
+    setSearchTerm(value);
+    setCurrentPage(1);
+
+    const params = new URLSearchParams(window.location.search);
+    const hasSearch = value.trim().length > 0;
+
+    if (hasSearch) {
+      params.set("search", value);
+    } else {
+      params.delete("search");
     }
-    if (!hasToken) {
-      router.push("/admin/login");
-      return;
-    }
 
-    fetchCompletedOrders();
-  }, [router]);
+    const query = params.toString();
+    router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+    window.dispatchEvent(new CustomEvent("admin-search-change", { detail: { search: hasSearch ? value : "" } }));
+  }
 
   useEffect(() => {
-    applyFilters();
-  }, [orders, filterType, searchTerm]);
+    function syncSearchFromUrl() {
+      setSearchTerm(new URLSearchParams(window.location.search).get("search") ?? "");
+      setCurrentPage(1);
+    }
 
-  function fetchCompletedOrders() {
-    setLoading(true);
+    function handleAdminSearch(event: Event) {
+      if (event instanceof CustomEvent && typeof event.detail?.search === "string") {
+        setSearchTerm(event.detail.search);
+        setCurrentPage(1);
+      }
+    }
+
+    syncSearchFromUrl();
+    window.addEventListener("popstate", syncSearchFromUrl);
+    window.addEventListener("admin-search-change", handleAdminSearch);
+
+    return () => {
+      window.removeEventListener("popstate", syncSearchFromUrl);
+      window.removeEventListener("admin-search-change", handleAdminSearch);
+    };
+  }, []);
+
+  const fetchCompletedOrders = useCallback(() => {
     fetch("/api/orders")
       .then((res) => res.json())
       .then((data) => {
@@ -88,53 +232,59 @@ export default function CompletedPage() {
         setOrders([]);
         setLoading(false);
       });
-  }
+  }, []);
 
-  function applyFilters() {
+  const weeksInSelectedMonth = useMemo(
+    () => getWeeksInMonth(selectedYear, selectedMonth),
+    [selectedMonth, selectedYear]
+  );
+  const daysInSelectedMonth = useMemo(
+    () => getDaysInMonth(selectedYear, selectedMonth),
+    [selectedMonth, selectedYear]
+  );
+  const effectiveSelectedDay = Math.min(selectedDay, daysInSelectedMonth);
+  const effectiveSelectedWeek = Math.min(selectedWeek, Math.max(weeksInSelectedMonth.length - 1, 0));
+
+  const selectedDateRange = useMemo(
+    () => getSelectedDateRange(filterType, selectedYear, selectedMonth, effectiveSelectedDay, effectiveSelectedWeek),
+    [effectiveSelectedDay, effectiveSelectedWeek, filterType, selectedMonth, selectedYear]
+  );
+
+  const availableYears = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const years = new Set<number>();
+
+    for (let year = currentYear - 8; year <= currentYear + 1; year += 1) {
+      years.add(year);
+    }
+
+    orders.forEach((order) => {
+      const orderDate = toDateObject(order.createdAt);
+      if (orderDate) {
+        years.add(orderDate.getFullYear());
+      }
+    });
+
+    years.add(selectedYear);
+    return Array.from(years).sort((a, b) => b - a);
+  }, [orders, selectedYear]);
+
+  const reportDescription = getReportScope(filterType, selectedDateRange);
+  const filenameScope = getFilenameScope(filterType, selectedDateRange);
+
+  const filteredOrders = useMemo(() => {
     let filtered = [...orders];
 
-    // Apply date filter
-    const now = new Date();
-    switch (filterType) {
-      case 'daily':
-        filtered = filtered.filter(order => {
-          const orderDate = toDateObject(order.createdAt);
-          return orderDate ? orderDate.toDateString() === now.toDateString() : false;
-        });
-        break;
-      case 'weekly':
-        const weekAgo = new Date(now);
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        filtered = filtered.filter(order => {
-          const orderDate = toDateObject(order.createdAt);
-          return orderDate ? orderDate >= weekAgo : false;
-        });
-        break;
-      case 'monthly':
-        const monthAgo = new Date(now);
-        monthAgo.setMonth(monthAgo.getMonth() - 1);
-        filtered = filtered.filter(order => {
-          const orderDate = toDateObject(order.createdAt);
-          return orderDate ? orderDate >= monthAgo : false;
-        });
-        break;
-      case 'yearly':
-        const yearAgo = new Date(now);
-        yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-        filtered = filtered.filter(order => {
-          const orderDate = toDateObject(order.createdAt);
-          return orderDate ? orderDate >= yearAgo : false;
-        });
-        break;
-      case 'all':
-      default:
-        // No date filtering
-        break;
+    if (selectedDateRange) {
+      filtered = filtered.filter(order => {
+        const orderDate = toDateObject(order.createdAt);
+        return orderDate ? orderDate >= selectedDateRange.start && orderDate <= selectedDateRange.end : false;
+      });
     }
 
     // Apply search filter
     if (searchTerm) {
-      const term = searchTerm.toLowerCase();
+      const term = searchTerm.toLowerCase().trim();
       filtered = filtered.filter(order =>
         order.uid?.toLowerCase().includes(term) ||
         order.customer?.toLowerCase().includes(term) ||
@@ -144,9 +294,23 @@ export default function CompletedPage() {
       );
     }
 
-    setFilteredOrders(filtered);
-    setCurrentPage(1);
-  }
+    return filtered;
+  }, [orders, searchTerm, selectedDateRange]);
+
+  useEffect(() => {
+    let hasToken = false;
+    try {
+      hasToken = Boolean(localStorage.getItem("admin_token"));
+    } catch {
+      hasToken = false;
+    }
+    if (!hasToken) {
+      router.push("/admin/login");
+      return;
+    }
+
+    fetchCompletedOrders();
+  }, [fetchCompletedOrders, router]);
 
   function handlePrint() {
     const printWindow = window.open('', '_blank');
@@ -225,7 +389,7 @@ export default function CompletedPage() {
             <p style="margin: 5px 0; color: #666;">Hotel Management System</p>
           </div>
           <div class="filter-info">
-            Filter: ${filterType.charAt(0).toUpperCase() + filterType.slice(1)} |
+            Filter: ${reportDescription} |
             Total Orders: ${filteredOrders.length} |
             Generated: ${new Date().toLocaleString()}
           </div>
@@ -247,7 +411,7 @@ export default function CompletedPage() {
                   <td>${formatDateOnly(order.createdAt)}</td>
                   <td>${order.customer || 'N/A'}</td>
                   <td>${order.contactNumber || 'N/A'}</td>
-                  <td>${order.items.map(item => `${item.name} (x${item.quantity})`).join(', ')}</td>
+                  <td>${order.items.map(item => `${getItemDisplayName(item)} (x${item.quantity})${item.menuItemMissing ? ` [${getItemAuditNote(item)}]` : ''}`).join(', ')}</td>
                   <td>₱${parseFloat(order.total).toFixed(2)}</td>
                 </tr>
               `).join('')}
@@ -306,7 +470,7 @@ export default function CompletedPage() {
         index === 0 ? (order.email || '') : '',
         index === 0 ? (order.address || '') : '',
         index === 0 ? (order.orderType || '') : '',
-        item.name,
+        item.menuItemMissing ? `${getItemDisplayName(item)} (${getItemAuditNote(item)})` : item.name,
         item.quantity,
         parseFloat(item.unitPrice).toFixed(2),
         parseFloat(item.lineTotal).toFixed(2),
@@ -327,7 +491,7 @@ export default function CompletedPage() {
     const url = URL.createObjectURL(blob);
 
     link.setAttribute('href', url);
-    link.setAttribute('download', `completed-orders-${filterType}-${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `completed-orders-${filenameScope}-${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -369,40 +533,18 @@ export default function CompletedPage() {
         >
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
             <div style={{ flex: 1, minWidth: 200 }}>
-              <input
-                type="text"
-                placeholder="Search by ID, customer, contact, email..."
+              <PageSearch
+                ariaLabel="Search completed orders"
+                placeholder="Search completed orders by ID, customer, contact, or email..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 6,
-                  fontSize: 14,
-                  outline: "none",
-                }}
+                onChange={updateSearchTerm}
+                onClear={() => updateSearchTerm("")}
+                resultCount={filteredOrders.length}
+                resultLabel="order"
+                marginBottom={0}
+                maxWidth="100%"
               />
             </div>
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value as FilterType)}
-              style={{
-                padding: "10px 12px",
-                border: "1px solid #e5e7eb",
-                borderRadius: 6,
-                fontSize: 14,
-                outline: "none",
-                cursor: "pointer",
-                minWidth: 120,
-              }}
-            >
-              <option value="all">All Time</option>
-              <option value="daily">Today</option>
-              <option value="weekly">This Week</option>
-              <option value="monthly">This Month</option>
-              <option value="yearly">This Year</option>
-            </select>
             <button
               onClick={handlePrint}
               style={{
@@ -439,6 +581,179 @@ export default function CompletedPage() {
             >
               📊 Export Excel
             </button>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 16, flexWrap: "wrap", marginBottom: 16 }}>
+            <div>
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                View By
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {filterOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => {
+                      setFilterType(option.value);
+                      setCurrentPage(1);
+                    }}
+                    style={{
+                      padding: "10px 16px",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      border: filterType === option.value ? "2px solid #3b82f6" : "1px solid #e5e7eb",
+                      borderRadius: 10,
+                      background: filterType === option.value ? "#eff6ff" : "white",
+                      color: filterType === option.value ? "#3b82f6" : "#6b7280",
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {filterType === 'daily' && (
+              <div>
+                <label style={{ display: "block", fontSize: 12, color: "#6b7280", marginBottom: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Day
+                </label>
+                <select
+                  aria-label="Select day"
+                  value={effectiveSelectedDay}
+                  onChange={(event) => {
+                    setSelectedDay(Number(event.target.value));
+                    setCurrentPage(1);
+                  }}
+                  style={{
+                    minWidth: 90,
+                    padding: "10px 12px",
+                    border: "1px solid #d1d5db",
+                    borderRadius: 10,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    background: "white",
+                    color: "#1f2937",
+                    cursor: "pointer",
+                  }}
+                >
+                  {Array.from({ length: daysInSelectedMonth }, (_, day) => day + 1).map((day) => (
+                    <option key={day} value={day}>
+                      {day}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {filterType === 'weekly' && (
+              <div>
+                <label style={{ display: "block", fontSize: 12, color: "#6b7280", marginBottom: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Week
+                </label>
+                <select
+                  aria-label="Select week"
+                  value={effectiveSelectedWeek}
+                  onChange={(event) => {
+                    setSelectedWeek(Number(event.target.value));
+                    setCurrentPage(1);
+                  }}
+                  style={{
+                    minWidth: 190,
+                    padding: "10px 12px",
+                    border: "1px solid #d1d5db",
+                    borderRadius: 10,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    background: "white",
+                    color: "#1f2937",
+                    cursor: "pointer",
+                  }}
+                >
+                  {weeksInSelectedMonth.map((week, index) => (
+                    <option key={`${week.start.toISOString()}-${index}`} value={index}>
+                      Week {index + 1}: {week.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {filterType !== 'all' && filterType !== 'yearly' && (
+              <div>
+                <label style={{ display: "block", fontSize: 12, color: "#6b7280", marginBottom: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Month
+                </label>
+                <select
+                  aria-label="Select month"
+                  value={selectedMonth}
+                  onChange={(event) => {
+                    setSelectedMonth(Number(event.target.value));
+                    setCurrentPage(1);
+                  }}
+                  style={{
+                    minWidth: 150,
+                    padding: "10px 12px",
+                    border: "1px solid #d1d5db",
+                    borderRadius: 10,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    background: "white",
+                    color: "#1f2937",
+                    cursor: "pointer",
+                  }}
+                >
+                  {monthOptions.map((month) => (
+                    <option key={month.value} value={month.value}>
+                      {month.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {filterType !== 'all' && (
+              <div>
+                <label style={{ display: "block", fontSize: 12, color: "#6b7280", marginBottom: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Year
+                </label>
+                <select
+                  aria-label="Select year"
+                  value={selectedYear}
+                  onChange={(event) => {
+                    setSelectedYear(Number(event.target.value));
+                    setCurrentPage(1);
+                  }}
+                  style={{
+                    minWidth: 110,
+                    padding: "10px 12px",
+                    border: "1px solid #d1d5db",
+                    borderRadius: 10,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    background: "white",
+                    color: "#1f2937",
+                    cursor: "pointer",
+                  }}
+                >
+                  {availableYears.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div style={{ minWidth: 220, paddingBottom: 3 }}>
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                Showing
+              </div>
+              <div style={{ fontSize: 14, color: "#1f2937", fontWeight: 700 }}>
+                {reportDescription}
+              </div>
+            </div>
           </div>
 
           {/* Summary Cards */}
@@ -548,7 +863,12 @@ export default function CompletedPage() {
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           {order.items.slice(0, 2).map((item) => (
                             <span key={item.id}>
-                              {item.name} (x{item.quantity})
+                              {getItemDisplayName(item)} (x{item.quantity})
+                              {item.menuItemMissing && (
+                                <span style={{ display: "block", color: "#9ca3af", fontSize: 12 }}>
+                                  {getItemAuditNote(item)}
+                                </span>
+                              )}
                             </span>
                           ))}
                           {order.items.length > 2 && (
@@ -674,6 +994,7 @@ export default function CompletedPage() {
                   Order Details - {selectedOrder.uid || `ORD${String(selectedOrder.id).padStart(6, '0')}`}
                 </h2>
                 <button
+                  aria-label="Close order details"
                   onClick={() => setSelectedOrder(null)}
                   style={{
                     background: "transparent",
@@ -739,10 +1060,10 @@ export default function CompletedPage() {
                         {selectedOrder.items.map((item) => (
                           <tr key={item.id} style={{ borderTop: "1px solid #e5e7eb" }}>
                             <td style={{ padding: "8px 12px", fontSize: 14, color: "#1f2937" }}>
-                              {item.name}
-                              {item.notes && (
+                              {getItemDisplayName(item)}
+                              {getItemAuditNote(item) && (
                                 <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-                                  Note: {item.notes}
+                                  {getItemAuditNote(item)}
                                 </div>
                               )}
                             </td>

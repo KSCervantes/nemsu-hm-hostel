@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "../components/Sidebar";
 import AdminHeader from "../components/AdminHeader";
+import PageSearch from "../components/PageSearch";
 import Swal from "sweetalert2";
 
 type FoodItem = {
@@ -17,10 +18,56 @@ type FoodItem = {
   available: boolean;
 };
 
+function ProductImage({ item }: { item: FoodItem }) {
+  const [failed, setFailed] = useState(false);
+  const showImage = Boolean(item.img) && !failed;
+
+  return (
+    <div
+      style={{
+        width: 72,
+        height: 56,
+        borderRadius: 8,
+        overflow: "hidden",
+        border: "1px solid #e5e7eb",
+        background: "#f8fafc",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "#94a3b8",
+        fontSize: 11,
+        fontWeight: 700,
+        textAlign: "center",
+        flexShrink: 0,
+      }}
+      title={item.name}
+    >
+      {showImage ? (
+        <img
+          src={item.img}
+          alt={item.name}
+          loading="lazy"
+          onError={() => setFailed(true)}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            display: "block",
+          }}
+        />
+      ) : (
+        <span>No image</span>
+      )}
+    </div>
+  );
+}
+
 export default function AdminFoodMenuPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const [items, setItems] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<FoodItem | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -45,11 +92,64 @@ export default function AdminFoodMenuPage() {
     { label: "Income", href: "/admin/Income" },
   ];
 
+  function updateSearchTerm(value: string) {
+    setSearchTerm(value);
+
+    const params = new URLSearchParams(window.location.search);
+    const hasSearch = value.trim().length > 0;
+
+    if (hasSearch) {
+      params.set("search", value);
+    } else {
+      params.delete("search");
+    }
+
+    const query = params.toString();
+    router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+    window.dispatchEvent(new CustomEvent("admin-search-change", { detail: { search: hasSearch ? value : "" } }));
+  }
+
+  useEffect(() => {
+    function syncSearchFromUrl() {
+      setSearchTerm(new URLSearchParams(window.location.search).get("search") ?? "");
+    }
+
+    function handleAdminSearch(event: Event) {
+      if (event instanceof CustomEvent && typeof event.detail?.search === "string") {
+        setSearchTerm(event.detail.search);
+      }
+    }
+
+    syncSearchFromUrl();
+    window.addEventListener("popstate", syncSearchFromUrl);
+    window.addEventListener("admin-search-change", handleAdminSearch);
+
+    return () => {
+      window.removeEventListener("popstate", syncSearchFromUrl);
+      window.removeEventListener("admin-search-change", handleAdminSearch);
+    };
+  }, []);
+
+  const filteredItems = items.filter((item) => {
+    const term = searchTerm.toLowerCase().trim();
+    if (!term) return true;
+
+    return (
+      item.id.toString().includes(term) ||
+      item.name.toLowerCase().includes(term) ||
+      Boolean(item.description?.toLowerCase().includes(term)) ||
+      Boolean(item.category?.toLowerCase().includes(term)) ||
+      Boolean(item.code?.toLowerCase().includes(term)) ||
+      item.price.toString().includes(term) ||
+      (item.available ? "available yes" : "unavailable no").includes(term)
+    );
+  });
+
   useEffect(() => {
     let hasToken = false;
     try {
       hasToken = Boolean(localStorage.getItem("admin_token"));
-    } catch (e) {
+    } catch {
       hasToken = false;
     }
     if (!hasToken) {
@@ -153,12 +253,13 @@ export default function AdminFoodMenuPage() {
         timer: 2000,
         showConfirmButton: false,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to upload image. Please try again.";
       console.error("Upload error:", error);
       Swal.fire({
         icon: "error",
         title: "Upload Failed",
-        text: error.message || "Failed to upload image. Please try again.",
+        text: message,
         confirmButtonColor: "#dc2626",
       });
     } finally {
@@ -223,11 +324,12 @@ export default function AdminFoodMenuPage() {
         timer: 2000,
         showConfirmButton: false
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to save item. Please try again.";
       Swal.fire({
         icon: 'error',
         title: 'Operation Failed',
-        text: err.message || "Failed to save item. Please try again.",
+        text: message,
         confirmButtonColor: '#dc2626'
       });
     }
@@ -260,7 +362,7 @@ export default function AdminFoodMenuPage() {
         timer: 2000,
         showConfirmButton: false
       });
-    } catch (err) {
+    } catch {
       Swal.fire({
         icon: 'error',
         title: 'Delete Failed',
@@ -297,11 +399,34 @@ export default function AdminFoodMenuPage() {
           {!loading && items.length === 0 && <div>No items found. Add your first product!</div>}
 
           {!loading && items.length > 0 && (
+            <PageSearch
+              ariaLabel="Search food menu items"
+              placeholder="Search products by ID, name, category, code, price, or availability..."
+              value={searchTerm}
+              onChange={updateSearchTerm}
+              onClear={() => updateSearchTerm("")}
+              resultCount={filteredItems.length}
+              resultLabel="product"
+            />
+          )}
+
+          {!loading && items.length > 0 && filteredItems.length === 0 && (
+            <div style={{ textAlign: "center", padding: 40, color: "#6b7280", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8 }}>
+              <svg style={{ margin: "0 auto 16px", color: "#d1d5db" }} width="48" height="48" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+              </svg>
+              <p style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>No products found</p>
+              <p style={{ fontSize: 14 }}>Try adjusting your search terms</p>
+            </div>
+          )}
+
+          {!loading && filteredItems.length > 0 && (
             <div style={{ overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: 8 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, background: "#fff" }}>
                 <thead>
                   <tr style={{ textAlign: "left", background: "#f8fafc", borderBottom: "2px solid #e5e7eb" }}>
                     <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>ID</th>
+                    <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb", width: 104 }}>Image</th>
                     <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Name</th>
                     <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Category</th>
                     <th style={{ padding: "14px 12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>Code</th>
@@ -311,9 +436,12 @@ export default function AdminFoodMenuPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item) => (
+                  {filteredItems.map((item) => (
                     <tr key={item.id} style={{ borderBottom: "1px solid #e5e7eb" }}>
                       <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>{item.id}</td>
+                      <td style={{ padding: "8px 12px", borderRight: "1px solid #e5e7eb" }}>
+                        <ProductImage item={item} />
+                      </td>
                       <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>{item.name}</td>
                       <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>{item.category || "—"}</td>
                       <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>{item.code || "—"}</td>

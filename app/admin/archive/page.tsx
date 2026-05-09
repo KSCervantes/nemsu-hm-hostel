@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "../components/Sidebar";
 import AdminHeader from "../components/AdminHeader";
+import PageSearch from "../components/PageSearch";
 import Swal from "sweetalert2";
 import { formatDate } from "@/lib/date-utils";
 
@@ -31,14 +32,18 @@ type Order = {
   items: OrderItem[];
 };
 
+type ArchiveStatusFilter = "all" | "cancelled" | "deleted";
+
 export default function ArchivePage() {
   const router = useRouter();
+  const pathname = usePathname();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ArchiveStatusFilter>("all");
 
   const navItems = [
     { label: "Dashboard", href: "/admin/Dashboard" },
@@ -49,11 +54,49 @@ export default function ArchivePage() {
     { label: "Income", href: "/admin/Income" },
   ];
 
+  function updateSearchTerm(value: string) {
+    setSearchTerm(value);
+
+    const params = new URLSearchParams(window.location.search);
+    const hasSearch = value.trim().length > 0;
+
+    if (hasSearch) {
+      params.set("search", value);
+    } else {
+      params.delete("search");
+    }
+
+    const query = params.toString();
+    router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+    window.dispatchEvent(new CustomEvent("admin-search-change", { detail: { search: hasSearch ? value : "" } }));
+  }
+
+  useEffect(() => {
+    function syncSearchFromUrl() {
+      setSearchTerm(new URLSearchParams(window.location.search).get("search") ?? "");
+    }
+
+    function handleAdminSearch(event: Event) {
+      if (event instanceof CustomEvent && typeof event.detail?.search === "string") {
+        setSearchTerm(event.detail.search);
+      }
+    }
+
+    syncSearchFromUrl();
+    window.addEventListener("popstate", syncSearchFromUrl);
+    window.addEventListener("admin-search-change", handleAdminSearch);
+
+    return () => {
+      window.removeEventListener("popstate", syncSearchFromUrl);
+      window.removeEventListener("admin-search-change", handleAdminSearch);
+    };
+  }, []);
+
   useEffect(() => {
     let hasToken = false;
     try {
       hasToken = Boolean(localStorage.getItem("admin_token"));
-    } catch (e) {
+    } catch {
       hasToken = false;
     }
     if (!hasToken) {
@@ -69,8 +112,10 @@ export default function ArchivePage() {
     fetch("/api/orders?archived=true")
       .then((res) => res.json())
       .then((data) => {
-        // Ensure data is always an array
-        setOrders(Array.isArray(data) ? data : []);
+        const archivedOrders = Array.isArray(data)
+          ? data.filter((order: Order) => order.status !== "COMPLETED")
+          : [];
+        setOrders(archivedOrders);
         setLoading(false);
       })
       .catch(() => {
@@ -118,7 +163,7 @@ export default function ArchivePage() {
         timer: 2000,
         showConfirmButton: false
       });
-    } catch (err) {
+    } catch {
       Swal.fire({
         icon: 'error',
         title: 'Restore Failed',
@@ -144,7 +189,7 @@ export default function ArchivePage() {
 
     try {
       // Delete order items first
-      const deleteItemsRes = await fetch(`/api/orders/${orderId}/items`, {
+      await fetch(`/api/orders/${orderId}/items`, {
         method: "DELETE"
       });
 
@@ -167,7 +212,7 @@ export default function ArchivePage() {
         timer: 2000,
         showConfirmButton: false
       });
-    } catch (err) {
+    } catch {
       Swal.fire({
         icon: 'error',
         title: 'Delete Failed',
@@ -191,7 +236,7 @@ export default function ArchivePage() {
       "Items"
     ];
 
-    const rows = orders.map(order => {
+    const rows = filteredOrders.map(order => {
       const itemsList = order.items.map(item =>
         `${item.name} (x${item.quantity}) - ₱${item.lineTotal}${item.notes ? ` [Note: ${item.notes}]` : ""}`
       ).join("; ");
@@ -238,20 +283,32 @@ export default function ArchivePage() {
     Toast.fire({
       icon: 'success',
       title: 'CSV Exported Successfully!',
-      text: `${orders.length} archived orders exported`
+      text: `${filteredOrders.length} archived orders exported`
     });
   }
 
+  const archiveStats = {
+    cancelled: orders.filter((order) => order.status === "CANCELLED").length,
+    deleted: orders.filter((order) => order.status !== "CANCELLED").length,
+    totalValue: orders.reduce((sum, order) => sum + Number(order.total || 0), 0),
+  };
+
   // Search and filter orders
   const filteredOrders = orders.filter((order) => {
-    const searchLower = searchTerm.toLowerCase();
-    return (
+    const searchLower = searchTerm.toLowerCase().trim();
+    const matchesStatus =
+      statusFilter === "all" ||
+      (statusFilter === "cancelled" && order.status === "CANCELLED") ||
+      (statusFilter === "deleted" && order.status !== "CANCELLED");
+
+    const matchesSearch =
       (order.uid ? order.uid.toLowerCase().includes(searchLower) : order.id.toString().includes(searchLower)) ||
       order.customer?.toLowerCase().includes(searchLower) ||
       order.contactNumber?.toLowerCase().includes(searchLower) ||
       order.email?.toLowerCase().includes(searchLower) ||
-      order.status.toLowerCase().includes(searchLower)
-    );
+      order.status.toLowerCase().includes(searchLower);
+
+    return matchesStatus && matchesSearch;
   });
 
   // Pagination calculations
@@ -264,10 +321,10 @@ export default function ArchivePage() {
     setCurrentPage(pageNumber);
   };
 
-  // Reset to page 1 when search changes
+  // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, statusFilter]);
 
   return (
     <div style={{ fontFamily: "system-ui,Segoe UI,Roboto,Helvetica,Arial", padding: 0 }}>
@@ -275,10 +332,62 @@ export default function ArchivePage() {
         <Sidebar items={navItems} />
 
         <main style={{ flex: 1, background: "#f8fafc", display: "flex", flexDirection: "column" }}>
-          <AdminHeader title="Archive" subtitle="Completed, cancelled, and deleted orders" breadcrumbs={["Home", "Archive"]} />
+          <AdminHeader title="Archive" subtitle="Cancelled and deleted orders for restore or permanent removal" breadcrumbs={["Home", "Archive"]} />
           <div style={{ padding: 32 }}>
             <div style={{ height: 12 }} />
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+
+            {!loading && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 20 }}>
+                <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(15, 23, 42, 0.05)" }}>
+                  <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Archived Records</div>
+                  <div style={{ fontSize: 30, fontWeight: 800, color: "#111827" }}>{orders.length}</div>
+                  <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>Cancelled or deleted orders</div>
+                </div>
+                <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(15, 23, 42, 0.05)" }}>
+                  <div style={{ fontSize: 12, color: "#9a3412", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Cancelled</div>
+                  <div style={{ fontSize: 30, fontWeight: 800, color: "#c2410c" }}>{archiveStats.cancelled}</div>
+                  <div style={{ fontSize: 13, color: "#9a3412", marginTop: 4 }}>Customer or kitchen cancellations</div>
+                </div>
+                <div style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(15, 23, 42, 0.05)" }}>
+                  <div style={{ fontSize: 12, color: "#475569", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Deleted / Inactive</div>
+                  <div style={{ fontSize: 30, fontWeight: 800, color: "#334155" }}>{archiveStats.deleted}</div>
+                  <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>Restorable inactive orders</div>
+                </div>
+                <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(15, 23, 42, 0.05)" }}>
+                  <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Archived Value</div>
+                  <div style={{ fontSize: 30, fontWeight: 800, color: "#111827" }}>₱{archiveStats.totalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>Not counted as completed revenue</div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
+              {!loading && orders.length > 0 && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {[
+                    { value: "all", label: "All Archive" },
+                    { value: "cancelled", label: "Cancelled" },
+                    { value: "deleted", label: "Deleted / Inactive" },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setStatusFilter(option.value as ArchiveStatusFilter)}
+                      style={{
+                        padding: "9px 14px",
+                        border: statusFilter === option.value ? "2px solid #4b5563" : "1px solid #e5e7eb",
+                        borderRadius: 8,
+                        background: statusFilter === option.value ? "#f3f4f6" : "#fff",
+                        color: statusFilter === option.value ? "#111827" : "#6b7280",
+                        fontWeight: 700,
+                        fontSize: 13,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             {orders.length > 0 && (
               <button
                 onClick={handleExportToCSV}
@@ -312,71 +421,20 @@ export default function ArchivePage() {
                 </svg>
                 Export Archive
               </button>
-            )}
+            )} 
           </div>
 
           {/* Search Bar */}
           {!loading && orders.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ position: "relative", maxWidth: 500 }}>
-                <svg
-                  style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}
-                  width="18"
-                  height="18"
-                  fill="currentColor"
-                  viewBox="0 0 16 16"
-                >
-                  <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Search archived orders..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px 10px 40px",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 8,
-                    fontSize: 14,
-                    outline: "none",
-                    transition: "all 0.2s"
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "#667eea";
-                    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(102, 126, 234, 0.1)";
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = "#e5e7eb";
-                    e.currentTarget.style.boxShadow = "none";
-                  }}
-                />
-                {searchTerm && (
-                  <button
-                    onClick={() => setSearchTerm("")}
-                    style={{
-                      position: "absolute",
-                      right: 12,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      background: "transparent",
-                      border: "none",
-                      color: "#9ca3af",
-                      cursor: "pointer",
-                      fontSize: 18,
-                      padding: 4
-                    }}
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-              {searchTerm && (
-                <div style={{ marginTop: 8, fontSize: 13, color: "#6b7280" }}>
-                  Found <strong>{filteredOrders.length}</strong> {filteredOrders.length === 1 ? "order" : "orders"}
-                </div>
-              )}
-            </div>
+            <PageSearch
+              ariaLabel="Search archived orders"
+              placeholder="Search archived orders by ID, customer, contact, email, or status..."
+              value={searchTerm}
+              onChange={updateSearchTerm}
+              onClear={() => updateSearchTerm("")}
+              resultCount={filteredOrders.length}
+              resultLabel="order"
+            />
           )}
 
           {loading && <div>Loading archived orders...</div>}
@@ -388,7 +446,7 @@ export default function ArchivePage() {
                 <path d="M5 6a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm4 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm4 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
               </svg>
               <p style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>No archived orders</p>
-              <p style={{ fontSize: 14 }}>Completed and cancelled orders will appear here</p>
+              <p style={{ fontSize: 14 }}>Cancelled or deleted orders will appear here</p>
             </div>
           )}
 
@@ -398,7 +456,7 @@ export default function ArchivePage() {
                 <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
               </svg>
               <p style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>No orders found</p>
-              <p style={{ fontSize: 14 }}>Try adjusting your search terms</p>
+              <p style={{ fontSize: 14 }}>Try adjusting your search terms or archive filter</p>
             </div>
           )}
 
@@ -426,8 +484,8 @@ export default function ArchivePage() {
                       <td style={{ padding: "12px", fontWeight: 600, color: "#374151", borderRight: "1px solid #e5e7eb" }}>₱{order.total}</td>
                       <td style={{ padding: "12px", borderRight: "1px solid #e5e7eb" }}>
                         <span style={{
-                          background: order.status === "COMPLETED" ? "#d1fae5" : "#fee2e2",
-                          color: order.status === "COMPLETED" ? "#065f46" : "#991b1b",
+                          background: order.status === "CANCELLED" ? "#fee2e2" : "#e5e7eb",
+                          color: order.status === "CANCELLED" ? "#991b1b" : "#374151",
                           padding: "5px 12px",
                           borderRadius: 6,
                           fontSize: 11,

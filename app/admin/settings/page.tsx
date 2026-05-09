@@ -13,6 +13,26 @@ type AdminUser = {
   updatedAt: string;
 };
 
+function SettingsIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -96,7 +116,7 @@ export default function SettingsPage() {
     let hasToken = false;
     try {
       hasToken = Boolean(localStorage.getItem("admin_token"));
-    } catch (e) {
+    } catch {
       hasToken = false;
     }
     if (!hasToken) {
@@ -267,7 +287,7 @@ export default function SettingsPage() {
 
       // Refresh admin users list
       fetchAdminUsers();
-    } catch (error) {
+    } catch {
       Swal.fire({
         icon: "error",
         title: "Connection Error",
@@ -303,7 +323,8 @@ export default function SettingsPage() {
                 color: "#1f2937",
               }}
             >
-              ⚙️ Settings
+              <SettingsIcon size={28} />
+              <span>Settings</span>
             </h1>
             <p style={{ color: "#6b7280", margin: "8px 0 0 0", fontSize: 14 }}>
               Customize your admin panel appearance and preferences
